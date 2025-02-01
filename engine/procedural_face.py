@@ -163,25 +163,24 @@ class ProceduralLid(ProceduralBase):
         self.params[self.offset + 2] = value
 
     def render(self, surface: pygame.Surface) -> None:
-        # 1) Create a large surface to draw the lid
+        # Create a larger surface to draw the lid (transparent background)
         lid_surf = pygame.Surface(
             (self.width * 2, self.height * 2), pygame.SRCALPHA
         )
+        lid_surf.fill((0, 0, 0, 0))
 
-        # 2) Draw rectangle for the lid
+        # Draw rectangle for the lid
         lid_height = int(self.eye_height * self.y)
         x1 = self.width - self.scale_factor_lid_height
         y1 = self.height - 1 - self.half_eye_height
         rect_width = self.scale_factor_lid_height * 2
-        rect_height = lid_height
-
+        rect_height = int(lid_height + self.half_eye_height)
+        # Fill this rectangle with solid black
         pygame.draw.rect(
-            lid_surf,
-            (0, 0, 0, 255),
-            (x1, y1, rect_width, rect_height),
+            lid_surf, (0, 0, 0, 255), (x1, y1, rect_width, rect_height)
         )
 
-        # 3) Draw chord for the bend
+        # Draw chord for the bend
         bend_height = int(self.eye_height * (1.0 - self.y) * self.bend)
         x3 = self.width - self.scale_factor_lid_bend
         y3 = self.height - 1 + lid_height - bend_height
@@ -190,11 +189,11 @@ class ProceduralLid(ProceduralBase):
         chord_rect = pygame.Rect(x3, y3, chord_width, chord_height)
         draw_filled_chord(lid_surf, (0, 0, 0, 255), chord_rect, 0, 180)
 
-        # 4) Rotate the lid surface
+        # Rotate
         angle_total = self.angle + self.angle_offset
         rotated_lid = pygame.transform.rotate(lid_surf, angle_total)
 
-        # 5) Blit onto parent surface
+        # Blit onto parent surface
         lid_x = (surface.get_width() - rotated_lid.get_width()) // 2
         lid_y = (surface.get_height() - rotated_lid.get_height()) // 2 + int(
             self.y_offset
@@ -219,7 +218,9 @@ class ProceduralEye(ProceduralBase):
     ):
         super().__init__(params, offset, width, height)
         self.x_offset = float(x_offset)
+        # We'll compute corner radius like the original.
         self.corner_radius = self.width / 20 + self.height / 10
+        # Create lids.
         self.lids = (
             ProceduralLid(
                 params,
@@ -239,7 +240,6 @@ class ProceduralEye(ProceduralBase):
             ),
         )
 
-    # Eye-related parameters
     @property
     def center_x(self) -> float:
         return self.params[self.offset + 0]
@@ -280,7 +280,6 @@ class ProceduralEye(ProceduralBase):
     def angle(self, value: float) -> None:
         self.params[self.offset + 4] = value
 
-    # Arc radius parameters
     @property
     def lower_inner_radius_x(self) -> float:
         return self.params[self.offset + 5]
@@ -345,10 +344,10 @@ class ProceduralEye(ProceduralBase):
     def upper_outer_radius_y(self, value: float) -> None:
         self.params[self.offset + 12] = value
 
-    # Sub-rendering helper methods to replicate Pillow's rectangle & pieslice logic
     def _render_inner_rect(
         self, surface: pygame.Surface, x1: int, y1: int, x2: int, y2: int
     ) -> None:
+        # replicate pillow: draw rectangle for the inner region
         rect = pygame.Rect(
             x2
             - int(
@@ -368,6 +367,7 @@ class ProceduralEye(ProceduralBase):
     def _render_upper_rect(
         self, surface: pygame.Surface, x1: int, y1: int, x2: int
     ) -> None:
+        # replicate pillow's rectangle logic
         rect = pygame.Rect(
             x1 + int(self.corner_radius * self.upper_outer_radius_x),
             y1,
@@ -417,6 +417,7 @@ class ProceduralEye(ProceduralBase):
     def _render_center_rect(
         self, surface: pygame.Surface, x1: int, y1: int, x2: int, y2: int
     ) -> None:
+        # replicate pillow logic for the center rectangle
         rx1 = (
             x1
             + int(
@@ -515,41 +516,44 @@ class ProceduralEye(ProceduralBase):
     def render(self, parent_surface: pygame.Surface) -> None:
         # Eye surface
         eye_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        eye_surf.fill((0, 0, 0, 0))  # transparent
 
-        # geometry
+        # We replicate pillow logic: first fill background with black.
+        eye_surf.fill((0, 0, 0, 0))  # Transparent
+
+        # Then draw the complicated shape using rect arcs.
         x1 = self.width // 2 - self.half_eye_width
         y1 = self.height // 2 - self.half_eye_height
         x2 = self.width // 2 + self.half_eye_width
         y2 = self.height // 2 + self.half_eye_height
 
-        # sub-renders
-        self._render_inner_rect(eye_surf, x1, y1, x2, y2)
-        self._render_upper_rect(eye_surf, x1, y1, x2)
-        self._render_outer_rect(eye_surf, x1, y1, y2)
-        self._render_lower_rect(eye_surf, x1, x2, y2)
-        self._render_center_rect(eye_surf, x1, y1, x2, y2)
-        self._render_lower_inner_pie(eye_surf, x2, y2)
-        self._render_upper_inner_pie(eye_surf, y1, x2)
-        self._render_upper_outer_pie(eye_surf, x1, y1)
-        self._render_lower_outer_pie(eye_surf, x1, y2)
+        # We'll replicate the same sub-renders:
+        draw = eye_surf  # We'll call these _render_* on eye_surf.
+        self._render_inner_rect(draw, x1, y1, x2, y2)
+        self._render_upper_rect(draw, x1, y1, x2)
+        self._render_outer_rect(draw, x1, y1, y2)
+        self._render_lower_rect(draw, x1, x2, y2)
+        self._render_center_rect(draw, x1, y1, x2, y2)
+        self._render_lower_inner_pie(draw, x2, y2)
+        self._render_upper_inner_pie(draw, y1, x2)
+        self._render_upper_outer_pie(draw, x1, y1)
+        self._render_lower_outer_pie(draw, x1, y2)
 
-        # lids
+        # Draw lids
         for lid in self.lids:
             lid.render(eye_surf)
 
-        # rotate
+        # Rotate.
         rotated_eye = pygame.transform.rotate(eye_surf, self.angle)
 
-        # scale
+        # Scale.
         new_w = int(rotated_eye.get_width() * self.scale_x)
         new_h = int(rotated_eye.get_height() * self.scale_y)
         if new_w <= 0 or new_h <= 0:
+            # invalid scale
             return
-
         scaled_eye = pygame.transform.smoothscale(rotated_eye, (new_w, new_h))
 
-        # blit
+        # Blit onto parent_surface.
         x_pos = int(
             (parent_surface.get_width() - scaled_eye.get_width()) / 2
             + self.center_x * X_FACTOR
@@ -562,11 +566,6 @@ class ProceduralEye(ProceduralBase):
         parent_surface.blit(scaled_eye, (x_pos, y_pos))
 
 
-############################
-# The Full Procedural Face #
-############################
-
-
 class ProceduralFace(ProceduralBase):
     __slots__ = ("eyes",)
 
@@ -577,13 +576,14 @@ class ProceduralFace(ProceduralBase):
         height: int = DEFAULT_HEIGHT,
     ):
         if params is None:
+            # 43 parameters as in the original
             params = [
-                0.0,  # face center_x
-                0.0,  # face center_y
-                1.0,  # face scale_x
-                1.0,  # face scale_y
-                0.0,  # face angle
-                # left eye (19 params)
+                0.0,  # center_x
+                0.0,  # center_y
+                1.0,  # scale_x
+                1.0,  # scale_y
+                0.0,  # angle
+                # Left eye
                 0.0,  # center_x
                 0.0,  # center_y
                 1.0,  # scale_x
@@ -603,26 +603,26 @@ class ProceduralFace(ProceduralBase):
                 0.0,  # lid bottom y
                 0.0,  # lid bottom angle
                 0.0,  # lid bottom bend
-                # right eye (19 params)
-                0.0,
-                0.0,
-                1.0,
-                1.0,
-                0.0,
-                0.5,
-                0.5,
-                0.5,
-                0.5,
-                0.5,
-                0.5,
-                0.5,
-                0.5,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
+                # Right eye (19 more)
+                0.0,  # center_x
+                0.0,  # center_y
+                1.0,  # scale_x
+                1.0,  # scale_y
+                0.0,  # angle
+                0.5,  # lower_inner_radius_x
+                0.5,  # lower_inner_radius_y
+                0.5,  # lower_outer_radius_x
+                0.5,  # lower_outer_radius_y
+                0.5,  # upper_inner_radius_x
+                0.5,  # upper_inner_radius_y
+                0.5,  # upper_outer_radius_x
+                0.5,  # upper_outer_radius_y
+                0.0,  # lid top y
+                0.0,  # lid top angle
+                0.0,  # lid top bend
+                0.0,  # lid bottom y
+                0.0,  # lid bottom angle
+                0.0,  # lid bottom bend
             ]
         if not isinstance(params, list) or len(params) < 43:
             raise ValueError(
@@ -631,7 +631,7 @@ class ProceduralFace(ProceduralBase):
         super().__init__(params, 0, width, height)
 
         eye_offset = int(self.width / 5)
-        # left eye at offset=5, right eye at offset=24
+        # left eye starts at offset=5, right eye at offset=24
         self.eyes = (
             ProceduralEye(params, 5, -eye_offset, self.width, self.height),
             ProceduralEye(params, 5 + 19, eye_offset, self.width, self.height),
@@ -678,13 +678,17 @@ class ProceduralFace(ProceduralBase):
         self.params[self.offset + 4] = value
 
     def render(self, parent_surface: pygame.Surface) -> pygame.Surface:
+        # We replicate the logic: draw face onto a separate surface, rotate/scale, then blit
         face_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         face_surf.fill((0, 0, 0, 0))
 
+        # draw eyes onto face_surf
         for eye in self.eyes:
             eye.render(face_surf)
 
+        # rotate the entire face
         rotated_face = pygame.transform.rotate(face_surf, self.angle)
+        # scale
         new_w = int(rotated_face.get_width() * self.scale_x)
         new_h = int(rotated_face.get_height() * self.scale_y)
         if new_w <= 0 or new_h <= 0:
@@ -693,6 +697,7 @@ class ProceduralFace(ProceduralBase):
             rotated_face, (new_w, new_h)
         )
 
+        # blit onto parent_surface
         x_pos = int(
             (parent_surface.get_width() - scaled_face.get_width()) / 2
             + self.center_x * X_FACTOR
@@ -705,18 +710,10 @@ class ProceduralFace(ProceduralBase):
         return parent_surface
 
 
-######################
-# Interpolation Logic
-######################
-
-
 def interpolate(
     from_face: ProceduralFace, to_face: ProceduralFace, steps: int
 ) -> Generator[ProceduralFace, None, None]:
-    """
-    Given two ProceduralFace objects, generate interpolated
-    ProceduralFace objects over a specified number of steps.
-    """
+    """Given two ProceduralFace objects, generate interpolated ProceduralFace objects over a specified number of steps."""
     if steps < 2:
         raise ValueError("At least 2 steps needed for interpolation.")
 
@@ -729,7 +726,6 @@ def interpolate(
             end_val = to_face.params[i]
             interp_val = start_val + (end_val - start_val) * t
             new_params.append(interp_val)
-
         # Create a new ProceduralFace from these interpolated parameters
         face = ProceduralFace(new_params, from_face.width, from_face.height)
         yield face
