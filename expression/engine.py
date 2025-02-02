@@ -3,7 +3,7 @@ import numpy as np
 import time
 import asyncio
 
-from .interpolation import linear_interpolation, ease_in_out_interpolation
+from .interpolation import INTERPOLATION
 from .expressions import Neutral
 from .idle import IdlingState
 
@@ -21,13 +21,13 @@ class Engine:
         self.expression_queue = asyncio.Queue()
 
         # Animation state
-        self.current_expression = Neutral()
+        self.current_expression = Neutral(sticky=True)
         self.target_expression = None
         self.previous_vertices = None
         self.start_time = time.perf_counter()
         self.transition_duration = 1.0
         self.animation_duration = 1.0
-        self.interpolation_func = linear_interpolation
+        self.interpolation_func = INTERPOLATION["linear"]
         self.is_transitioning = False
 
         self.idling_state = IdlingState()
@@ -55,17 +55,12 @@ class Engine:
                         self.screen_height,
                     )
                     self.target_expression = next_expr
-                    print(next_expr.__class__.__name__)
-                    print(next_expr.duration)
-                    print(next_expr.transition_duration)
                     self.transition_duration = (
                         next_expr.transition_duration or 1.0
                     )
                     self.animation_duration = next_expr.duration or 1.0
-                    self.interpolation_func = (
-                        linear_interpolation
-                        if next_expr.interpolation == "linear"
-                        else ease_in_out_interpolation
+                    self.interpolation_func = INTERPOLATION.get(
+                        next_expr.interpolation, INTERPOLATION["linear"]
                     )
                     self.is_transitioning = True
                     self.start_time = time.perf_counter()
@@ -92,9 +87,6 @@ class Engine:
 
                 if elapsed_time > self.animation_duration:
                     next_idle = self.idling_state.get_idle_expression()
-                    print(
-                        f"Idle expression: {next_idle.__class__.__name__}, Duration: {next_idle.duration}, Transition Duration: {next_idle.transition_duration}"
-                    )
                     if next_idle != self.current_expression:
                         self.previous_vertices = interpolated_vertices
                         self.target_expression = next_idle
@@ -104,6 +96,10 @@ class Engine:
                             next_idle.transition_duration
                         )
                         self.animation_duration = next_idle.duration
+                        self.interpolation_func = INTERPOLATION.get(
+                            next_idle.interpolation,
+                            INTERPOLATION["linear"],
+                        )
 
             else:  # Handle transition state
                 t = min(1.0, elapsed_time / self.transition_duration)

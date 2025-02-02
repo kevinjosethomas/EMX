@@ -1,5 +1,5 @@
 import numpy as np
-from .interpolation import ease_in_out_interpolation, linear_interpolation
+from .interpolation import INTERPOLATION
 
 
 class BaseExpression:
@@ -13,15 +13,22 @@ class BaseExpression:
 
     def __init__(
         self,
+        id,
+        label,
         keyframes,
         duration=1.0,
         transition_duration=0.2,
-        interpolation="linear",
+        interpolation=INTERPOLATION.get("linear"),
+        sticky=False,
     ):
+        self.id = id
+        self.label = label
         self.keyframes = keyframes
         self.duration = duration
         self.transition_duration = transition_duration
         self.interpolation = interpolation
+        self.sticky = sticky
+
         self.interpolation_methods = self.define_interpolation_methods()
         self.current_frame = 0
 
@@ -104,10 +111,22 @@ class Neutral(BaseExpression):
     ]
 
     def __init__(
-        self, duration=1.0, transition_duration=0.2, interpolation="linear"
+        self,
+        id=1,
+        label="Neutral",
+        duration=1.0,
+        transition_duration=0.2,
+        interpolation=INTERPOLATION["linear"],
+        sticky=True,
     ):
         super().__init__(
-            self.keyframes, duration, transition_duration, interpolation
+            id,
+            label,
+            self.keyframes,
+            duration,
+            transition_duration,
+            interpolation,
+            sticky,
         )
 
 
@@ -142,10 +161,22 @@ class Happy(BaseExpression):
     ]
 
     def __init__(
-        self, duration=1.0, transition_duration=0.2, interpolation="linear"
+        self,
+        id=2,
+        label="Happy",
+        duration=1.0,
+        transition_duration=0.2,
+        interpolation=INTERPOLATION["linear"],
+        sticky=False,
     ):
         super().__init__(
-            self.keyframes, duration, transition_duration, interpolation
+            id,
+            label,
+            self.keyframes,
+            duration,
+            transition_duration,
+            interpolation,
+            sticky,
         )
 
 
@@ -180,10 +211,22 @@ class Sad(BaseExpression):
     ]
 
     def __init__(
-        self, duration=1.0, transition_duration=0.2, interpolation="linear"
+        self,
+        id=3,
+        label="Sad",
+        duration=1.0,
+        transition_duration=0.2,
+        interpolation=INTERPOLATION["linear"],
+        sticky=False,
     ):
         super().__init__(
-            self.keyframes, duration, transition_duration, interpolation
+            id,
+            label,
+            self.keyframes,
+            duration,
+            transition_duration,
+            interpolation,
+            sticky,
         )
 
 
@@ -218,8 +261,20 @@ class Blink(BaseExpression):
     ]
 
     def __init__(
-        self, duration=0.1, transition_duration=0.05, interpolation="linear"
+        self,
+        id="blink",
+        label="Blink",
+        duration=0.1,
+        transition_duration=0.05,
+        interpolation=INTERPOLATION["ease_in_out"],
+        sticky=False,
     ):
         super().__init__(
-            self.keyframes, duration, transition_duration, interpolation
+            id,
+            label,
+            self.keyframes,
+            duration,
+            transition_duration,
+            interpolation,
+            sticky,
         )

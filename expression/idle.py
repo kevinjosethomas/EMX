@@ -1,5 +1,5 @@
-import random
 import time
+import random
 from .expressions import Neutral, Blink
 
 
@@ -11,7 +11,7 @@ class IdlingState:
     """
 
     def __init__(self):
-        self.current_expression = Neutral()  # Default idle state
+        self.current_expression = Neutral(sticky=True)  # Default idle state
         self.last_idle_time = time.time()  # Track last idle action
         self.next_idle_action_time = self.get_next_idle_time()
         self.blinking = False
@@ -22,14 +22,24 @@ class IdlingState:
 
     def get_idle_expression(self):
         """Determines what the face should do during idle time."""
-        if self.blinking:
-            self.blinking = False
-            self.current_expression = Neutral()
-        elif time.time() > self.next_idle_action_time:
 
-            self.current_expression = random.choice(
-                [Blink(duration=0.01, transition_duration=0.01)]
-            )
-            self.blinking = True
-            self.next_idle_action_time = self.get_next_idle_time()
+        if self.current_expression.sticky:
+
+            if isinstance(self.current_expression, Neutral):
+                if self.blinking:
+                    self.blinking = False
+                    self.current_expression = Neutral()
+                elif time.time() > self.next_idle_action_time:
+                    self.current_expression = Blink(
+                        duration=0.05,
+                        transition_duration=0.05,
+                        interpolation="ease_in_out",
+                    )
+                    self.blinking = True
+                    self.next_idle_action_time = self.get_next_idle_time()
+            else:
+                return self.current_expression
+        else:
+            self.current_expression = Neutral()
+
         return self.current_expression
