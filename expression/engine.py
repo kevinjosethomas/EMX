@@ -22,17 +22,24 @@ class Engine:
             None  # Store previous vertices for smooth transition
         )
         self.start_time = time.perf_counter()
-        self.duration = 1.0
+        self.transition_duration = 1.0
+        self.animation_duration = 1.0
         self.interpolation_func = linear_interpolation
 
         self.idling_state = IdlingState()
         self.fps = 120  # High FPS for smooth animations
 
     def queue_animation(
-        self, expression, duration=1.0, interpolation="linear"
+        self,
+        expression,
+        transition_duration=0.2,
+        animation_duration=1.0,
+        interpolation="linear",
     ):
-        """Queues an animation with a duration and interpolation style."""
-        self.queue.queue_animation(expression, duration, interpolation)
+        """Queues an animation with a transition duration, animation duration, and interpolation style."""
+        self.queue.queue_animation(
+            expression, transition_duration, animation_duration, interpolation
+        )
 
     def run(self):
         """Main event loop for rendering expressions correctly (fixes teleporting issue)."""
@@ -46,11 +53,17 @@ class Engine:
             current_time = time.perf_counter()
             elapsed_time = current_time - self.start_time
 
-            if elapsed_time > self.duration:
+            if (
+                elapsed_time
+                > self.transition_duration + self.animation_duration
+            ):
                 # Transition to next animation
-                next_expression, next_duration, interpolation_style = (
-                    self.queue.get_next()
-                )
+                (
+                    next_expression,
+                    next_transition_duration,
+                    next_animation_duration,
+                    interpolation_style,
+                ) = self.queue.get_next()
                 if next_expression:
                     self.previous_vertices = self.current_expression.render(
                         1.0,
@@ -60,7 +73,8 @@ class Engine:
                     )
                     self.current_expression = next_expression
                     self.start_time = time.perf_counter()
-                    self.duration = next_duration or 1.0
+                    self.transition_duration = next_transition_duration or 1.0
+                    self.animation_duration = next_animation_duration or 1.0
                     self.interpolation_func = (
                         linear_interpolation
                         if interpolation_style == "linear"
@@ -79,10 +93,10 @@ class Engine:
                     )
                     self.start_time = time.perf_counter()
 
-            # 🔹 FIX: Normalize `t` correctly to interpolate between expressions
-            t = min(1.0, elapsed_time / self.duration)
+            # Normalize `t` correctly to interpolate between expressions
+            t = min(1.0, elapsed_time / self.transition_duration)
 
-            # 🔹 FIX: Interpolate between previous and current expression
+            # Interpolate between previous and current expression
             current_vertices = self.current_expression.render(
                 1.0,
                 self.interpolation_func,
@@ -102,7 +116,7 @@ class Engine:
             else:
                 interpolated_vertices = current_vertices
 
-            # 🔹 FIX: Render left & right eyes separately!
+            # Render left & right eyes separately
             left_eye = interpolated_vertices[:12]
             right_eye = interpolated_vertices[12:]
 
