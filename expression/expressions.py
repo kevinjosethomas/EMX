@@ -2,9 +2,6 @@ import numpy as np
 from .interpolation import ease_in_out_interpolation, linear_interpolation
 
 
-import numpy as np
-
-
 class BaseExpression:
     """
     Base class for expressions.

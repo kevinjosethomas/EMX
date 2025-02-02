@@ -17,17 +17,18 @@ class Engine:
         self.queue = AnimationQueue()
         self.running = True
 
+        # Animation state
         self.current_expression = Neutral()
-        self.previous_vertices = (
-            None  # Store previous vertices for smooth transition
-        )
+        self.target_expression = None
+        self.previous_vertices = None
         self.start_time = time.perf_counter()
         self.transition_duration = 1.0
         self.animation_duration = 1.0
         self.interpolation_func = linear_interpolation
+        self.is_transitioning = False
 
         self.idling_state = IdlingState()
-        self.fps = 120  # High FPS for smooth animations
+        self.fps = 120
 
     def queue_animation(
         self,
@@ -42,90 +43,92 @@ class Engine:
         )
 
     def run(self):
-        """Main event loop for rendering expressions correctly (fixes teleporting issue)."""
         while self.running:
             self.screen.fill((30, 30, 30))
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-
             current_time = time.perf_counter()
             elapsed_time = current_time - self.start_time
 
-            if (
-                elapsed_time
-                > self.transition_duration + self.animation_duration
-            ):
-                # Transition to next animation
-                (
-                    next_expression,
-                    next_transition_duration,
-                    next_animation_duration,
-                    interpolation_style,
-                ) = self.queue.get_next()
-                if next_expression:
-                    self.previous_vertices = self.current_expression.render(
+            # Determine current vertices to display
+            if not self.is_transitioning:
+                # When not transitioning, just render current expression
+                interpolated_vertices = self.current_expression.render(
+                    1.0,
+                    self.interpolation_func,
+                    self.screen_width,
+                    self.screen_height,
+                )
+
+                # Check if we need to start a new transition
+                if elapsed_time > self.animation_duration:
+                    next_expr, next_trans_dur, next_anim_dur, interp_style = (
+                        self.queue.get_next()
+                    )
+
+                    if next_expr:
+                        # Store current state before transition
+                        self.previous_vertices = interpolated_vertices
+                        self.target_expression = next_expr
+                        self.transition_duration = next_trans_dur or 1.0
+                        self.animation_duration = next_anim_dur or 1.0
+                        self.interpolation_func = (
+                            linear_interpolation
+                            if interp_style == "linear"
+                            else ease_in_out_interpolation
+                        )
+                        self.is_transitioning = True
+                        self.start_time = current_time
+                    else:
+                        # Check for idle state changes
+                        next_idle = self.idling_state.get_idle_expression()
+                        if next_idle != self.current_expression:
+                            self.previous_vertices = interpolated_vertices
+                            self.target_expression = next_idle
+                            self.is_transitioning = True
+                            self.start_time = current_time
+
+            else:  # Handle transition state
+                t = min(1.0, elapsed_time / self.transition_duration)
+
+                if t >= 1.0:
+                    # Transition complete
+                    self.current_expression = self.target_expression
+                    self.target_expression = None
+                    self.is_transitioning = False
+                    self.start_time = current_time
+                    interpolated_vertices = self.current_expression.render(
                         1.0,
                         self.interpolation_func,
                         self.screen_width,
                         self.screen_height,
-                    )
-                    self.current_expression = next_expression
-                    self.start_time = time.perf_counter()
-                    self.transition_duration = next_transition_duration or 1.0
-                    self.animation_duration = next_animation_duration or 1.0
-                    self.interpolation_func = (
-                        linear_interpolation
-                        if interpolation_style == "linear"
-                        else ease_in_out_interpolation
                     )
                 else:
-                    # No animation in queue? Use idling state
-                    self.previous_vertices = self.current_expression.render(
+                    # Interpolate between previous and target vertices
+                    target_vertices = self.target_expression.render(
                         1.0,
                         self.interpolation_func,
                         self.screen_width,
                         self.screen_height,
                     )
-                    self.current_expression = (
-                        self.idling_state.get_idle_expression()
-                    )
-                    self.start_time = time.perf_counter()
+                    interpolated_vertices = [
+                        (
+                            self.previous_vertices[i][0] * (1 - t)
+                            + target_vertices[i][0] * t,
+                            self.previous_vertices[i][1] * (1 - t)
+                            + target_vertices[i][1] * t,
+                        )
+                        for i in range(len(self.previous_vertices))
+                    ]
 
-            # Normalize `t` correctly to interpolate between expressions
-            t = min(1.0, elapsed_time / self.transition_duration)
-
-            # Interpolate between previous and current expression
-            current_vertices = self.current_expression.render(
-                1.0,
-                self.interpolation_func,
-                self.screen_width,
-                self.screen_height,
-            )
-            if self.previous_vertices is not None:
-                interpolated_vertices = [
-                    (
-                        self.previous_vertices[i][0] * (1 - t)
-                        + current_vertices[i][0] * t,
-                        self.previous_vertices[i][1] * (1 - t)
-                        + current_vertices[i][1] * t,
-                    )
-                    for i in range(len(self.previous_vertices))
-                ]
-            else:
-                interpolated_vertices = current_vertices
-
-            # Render left & right eyes separately
+            # Render eyes
             left_eye = interpolated_vertices[:12]
             right_eye = interpolated_vertices[12:]
+            pygame.draw.polygon(self.screen, (255, 255, 255), left_eye)
+            pygame.draw.polygon(self.screen, (255, 255, 255), right_eye)
 
-            pygame.draw.polygon(
-                self.screen, (255, 255, 255), left_eye
-            )  # Render left eye
-            pygame.draw.polygon(
-                self.screen, (255, 255, 255), right_eye
-            )  # Render right eye
+            # Handle events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
 
             pygame.display.flip()
             self.clock.tick(self.fps)
