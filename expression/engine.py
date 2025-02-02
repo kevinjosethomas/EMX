@@ -1,6 +1,7 @@
 import pygame
 import numpy as np
 import time
+import asyncio
 from .queue_manager import AnimationQueue
 from .interpolation import linear_interpolation, ease_in_out_interpolation
 from .expressions import Neutral
@@ -17,6 +18,9 @@ class Engine:
         self.queue = AnimationQueue()
         self.running = True
 
+        # Async Queue for animations
+        self.expression_queue = asyncio.Queue()
+
         # Animation state
         self.current_expression = Neutral()
         self.target_expression = None
@@ -30,19 +34,55 @@ class Engine:
         self.idling_state = IdlingState()
         self.fps = 120
 
-    def queue_animation(
+    async def queue_animation(
         self,
         expression,
         transition_duration=0.2,
         animation_duration=1.0,
         interpolation="linear",
     ):
-        """Queues an animation with a transition duration, animation duration, and interpolation style."""
-        self.queue.queue_animation(
-            expression, transition_duration, animation_duration, interpolation
+        """Queues an animation asynchronously."""
+        await self.expression_queue.put(
+            (
+                expression,
+                transition_duration,
+                animation_duration,
+                interpolation,
+            )
         )
 
-    def run(self):
+    async def handle_queue(self):
+        """Asynchronously handle incoming animations from the queue."""
+        while self.running:
+            if not self.is_transitioning and not self.expression_queue.empty():
+                next_expr, next_trans_dur, next_anim_dur, interp_style = (
+                    await self.expression_queue.get()
+                )
+
+                if next_expr:
+                    self.previous_vertices = self.current_expression.render(
+                        1.0,
+                        self.interpolation_func,
+                        self.screen_width,
+                        self.screen_height,
+                    )
+                    self.target_expression = next_expr
+                    self.transition_duration = next_trans_dur or 1.0
+                    self.animation_duration = next_anim_dur or 1.0
+                    self.interpolation_func = (
+                        linear_interpolation
+                        if interp_style == "linear"
+                        else ease_in_out_interpolation
+                    )
+                    self.is_transitioning = True
+                    self.start_time = time.perf_counter()
+
+            await asyncio.sleep(0.01)  # Avoid excessive CPU usage
+
+    async def run(self):
+        """Main event loop for rendering expressions with smooth transitions."""
+        asyncio.create_task(self.handle_queue())  # Start queue handling
+
         while self.running:
             self.screen.fill((30, 30, 30))
             current_time = time.perf_counter()
@@ -50,7 +90,6 @@ class Engine:
 
             # Determine current vertices to display
             if not self.is_transitioning:
-                # When not transitioning, just render current expression
                 interpolated_vertices = self.current_expression.render(
                     1.0,
                     self.interpolation_func,
@@ -58,39 +97,18 @@ class Engine:
                     self.screen_height,
                 )
 
-                # Check if we need to start a new transition
                 if elapsed_time > self.animation_duration:
-                    next_expr, next_trans_dur, next_anim_dur, interp_style = (
-                        self.queue.get_next()
-                    )
-
-                    if next_expr:
-                        # Store current state before transition
+                    next_idle = self.idling_state.get_idle_expression()
+                    if next_idle != self.current_expression:
                         self.previous_vertices = interpolated_vertices
-                        self.target_expression = next_expr
-                        self.transition_duration = next_trans_dur or 1.0
-                        self.animation_duration = next_anim_dur or 1.0
-                        self.interpolation_func = (
-                            linear_interpolation
-                            if interp_style == "linear"
-                            else ease_in_out_interpolation
-                        )
+                        self.target_expression = next_idle
                         self.is_transitioning = True
                         self.start_time = current_time
-                    else:
-                        # Check for idle state changes
-                        next_idle = self.idling_state.get_idle_expression()
-                        if next_idle != self.current_expression:
-                            self.previous_vertices = interpolated_vertices
-                            self.target_expression = next_idle
-                            self.is_transitioning = True
-                            self.start_time = current_time
 
             else:  # Handle transition state
                 t = min(1.0, elapsed_time / self.transition_duration)
 
                 if t >= 1.0:
-                    # Transition complete
                     self.current_expression = self.target_expression
                     self.target_expression = None
                     self.is_transitioning = False
@@ -102,7 +120,6 @@ class Engine:
                         self.screen_height,
                     )
                 else:
-                    # Interpolate between previous and target vertices
                     target_vertices = self.target_expression.render(
                         1.0,
                         self.interpolation_func,
@@ -132,5 +149,6 @@ class Engine:
 
             pygame.display.flip()
             self.clock.tick(self.fps)
+            await asyncio.sleep(0)  # Allow other tasks to run
 
         pygame.quit()
