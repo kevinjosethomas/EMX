@@ -21,6 +21,7 @@ class BaseExpression:
         interpolation=INTERPOLATION.get("linear"),
         sticky=False,
         position=(0.0, 0.0),
+        scale=1.0,
     ):
         self.id = id
         self.label = label
@@ -30,6 +31,7 @@ class BaseExpression:
         self.interpolation = interpolation
         self.sticky = sticky
         self.position = position
+        self.scale = scale  # Initialize scale
 
         self.interpolation_methods = self.define_interpolation_methods()
         self.current_frame = 0
@@ -76,8 +78,11 @@ class BaseExpression:
         )
 
     def scale_vertices(self, vertices, screen_width, screen_height):
-        """Scales normalized coordinates (0-1) to the actual screen size."""
-        return [(x * screen_width, y * screen_height) for x, y in vertices]
+        """Scales normalized coordinates (0-1) to the actual screen size and applies the scale factor."""
+        return [
+            (x * screen_width * self.scale, y * screen_height * self.scale)
+            for x, y in vertices
+        ]
 
     def apply_position_offset(self, vertices):
         """Applies the position offset to the vertices and ensures they stay within screen boundaries."""
@@ -142,6 +147,7 @@ class Neutral(BaseExpression):
         interpolation=INTERPOLATION["linear"],
         sticky=True,
         position=(0.0, 0.0),
+        scale=1.0,
     ):
         super().__init__(
             id,
@@ -152,6 +158,7 @@ class Neutral(BaseExpression):
             interpolation,
             sticky,
             position,
+            scale,
         )
 
 
@@ -194,6 +201,7 @@ class Happy(BaseExpression):
         interpolation=INTERPOLATION["linear"],
         sticky=False,
         position=(0.0, 0.0),
+        scale=1.0,
     ):
         super().__init__(
             id,
@@ -204,6 +212,7 @@ class Happy(BaseExpression):
             interpolation,
             sticky,
             position,
+            scale,
         )
 
 
@@ -246,6 +255,7 @@ class Sad(BaseExpression):
         interpolation=INTERPOLATION["linear"],
         sticky=False,
         position=(0.0, 0.0),
+        scale=1.0,
     ):
         super().__init__(
             id,
@@ -256,6 +266,7 @@ class Sad(BaseExpression):
             interpolation,
             sticky,
             position,
+            scale,
         )
 
 
@@ -298,6 +309,7 @@ class Blink(BaseExpression):
         interpolation=INTERPOLATION["ease_in_out"],
         sticky=False,
         position=(0.0, 0.0),
+        scale=1.0,
     ):
         super().__init__(
             id,
@@ -308,4 +320,5 @@ class Blink(BaseExpression):
             interpolation,
             sticky,
             position,
+            scale,
         )
