@@ -27,7 +27,7 @@ class IdlingState:
             self.current_expression = Neutral()
         elif time.time() > self.next_idle_action_time:
             # Randomly select an idle action
-            self.current_expression = random.choice([Blink()])
+            self.current_expression = random.choice([Blink(duration=0.1)])
             self.blinking = True
             self.next_idle_action_time = (
                 self.get_next_idle_time()
