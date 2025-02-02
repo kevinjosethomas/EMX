@@ -10,11 +10,11 @@ from typing import Optional, List, Generator
 # Constants and Config #
 ########################
 
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 720
+DEFAULT_WIDTH = 1024
+DEFAULT_HEIGHT = 600
 
-DEFAULT_EYE_WIDTH = 280
-DEFAULT_EYE_HEIGHT = 450
+DEFAULT_EYE_WIDTH = 224
+DEFAULT_EYE_HEIGHT = 375
 
 X_FACTOR = 0.55
 Y_FACTOR = 0.25
@@ -630,7 +630,7 @@ class ProceduralFace(ProceduralBase):
             )
         super().__init__(params, 0, width, height)
 
-        eye_offset = int(self.width / 5)
+        eye_offset = int(self.width / 6)
         # left eye starts at offset=5, right eye at offset=24
         self.eyes = (
             ProceduralEye(params, 5, -eye_offset, self.width, self.height),

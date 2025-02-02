@@ -1,4 +1,6 @@
-from typing import Optional, List
+import sys
+import inspect
+from typing import Optional, List, Type
 
 from engine.procedural_face import (
     ProceduralFace,
@@ -36,6 +38,19 @@ __all__ = [
 ]
 
 
+def get_all_expression_classes() -> List[Type[ProceduralFace]]:
+    """Return a list of all expression classes."""
+    expression_classes = []
+    for name, obj in inspect.getmembers(sys.modules[__name__]):
+        if (
+            inspect.isclass(obj)
+            and issubclass(obj, ProceduralFace)
+            and obj is not ProceduralFace
+        ):
+            expression_classes.append(obj)
+    return expression_classes
+
+
 class Neutral(ProceduralFace):
 
     def __init__(
@@ -49,9 +64,6 @@ class Neutral(ProceduralFace):
         self.eyes[0].scale_y = 0.8
         self.eyes[1].scale_x = 0.8
         self.eyes[1].scale_y = 0.8
-
-
-# Six universal expressions by Ekman - https://en.wikipedia.org/wiki/Facial_expression
 
 
 class Anger(ProceduralFace):
@@ -153,9 +165,6 @@ class Fear(ProceduralFace):
         self.eyes[1].lids[0].bend = 0.1
         self.eyes[1].lids[1].y = 0.4
         self.eyes[1].lids[1].angle = -10.0
-
-
-# Sub-expressions of sadness.
 
 
 class Pleading(ProceduralFace):
@@ -260,9 +269,6 @@ class Embarrassment(ProceduralFace):
         self.eyes[1].lids[1].y = 0.1
 
 
-# Sub-expressions of disgust.
-
-
 class Horror(ProceduralFace):
 
     def __init__(
@@ -274,9 +280,6 @@ class Horror(ProceduralFace):
         super().__init__(params, width, height)
         self.eyes[0].lids[0].angle = 20.0
         self.eyes[1].lids[0].angle = -20.0
-
-
-# Sub-expressions of anger.
 
 
 class Skepticism(ProceduralFace):
@@ -315,7 +318,6 @@ class Annoyance(ProceduralFace):
 
 
 class Fury(ProceduralFace):
-    """aka "enragement"."""
 
     def __init__(
         self,
@@ -364,9 +366,6 @@ class Rejection(ProceduralFace):
         self.eyes[1].lids[0].y = 0.8
 
 
-# Sub expressions of negative emotions.
-
-
 class Boredom(ProceduralFace):
 
     def __init__(
@@ -412,9 +411,6 @@ class Asleep(ProceduralFace):
         self.eyes[1].center_y = 50.0
         self.eyes[1].lids[0].y = 0.45
         self.eyes[1].lids[1].y = 0.5
-
-
-# Sub-expressions of confusion.
 
 
 class Confusion(ProceduralFace):
