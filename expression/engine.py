@@ -9,11 +9,16 @@ from .idle import IdlingState
 
 
 class Engine:
-    def __init__(self, width=1024, height=600):
+    def __init__(self, width=1024, height=600, fullscreen=False):
         pygame.init()
         self.screen_width = width
         self.screen_height = height
-        self.screen = pygame.display.set_mode((width, height))
+        if fullscreen:
+            self.screen = pygame.display.set_mode(
+                (width, height), pygame.FULLSCREEN
+            )
+        else:
+            self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
         self.running = True
 

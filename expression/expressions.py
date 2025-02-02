@@ -20,6 +20,7 @@ class BaseExpression:
         transition_duration=0.2,
         interpolation=INTERPOLATION.get("linear"),
         sticky=False,
+        position=(0.0, 0.0),
     ):
         self.id = id
         self.label = label
@@ -28,6 +29,7 @@ class BaseExpression:
         self.transition_duration = transition_duration
         self.interpolation = interpolation
         self.sticky = sticky
+        self.position = position
 
         self.interpolation_methods = self.define_interpolation_methods()
         self.current_frame = 0
@@ -45,7 +47,9 @@ class BaseExpression:
         if num_frames == 1:
             # Single-frame expressions (no interpolation needed)
             return self.scale_vertices(
-                self.keyframes[0], screen_width, screen_height
+                self.apply_position_offset(self.keyframes[0]),
+                screen_width,
+                screen_height,
             )
 
         # Determine which two frames we are interpolating between
@@ -66,12 +70,31 @@ class BaseExpression:
         interpolated_vertices = interp_func(v_start, v_end, t_local)
 
         return self.scale_vertices(
-            interpolated_vertices, screen_width, screen_height
+            self.apply_position_offset(interpolated_vertices),
+            screen_width,
+            screen_height,
         )
 
     def scale_vertices(self, vertices, screen_width, screen_height):
         """Scales normalized coordinates (0-1) to the actual screen size."""
         return [(x * screen_width, y * screen_height) for x, y in vertices]
+
+    def apply_position_offset(self, vertices):
+        """Applies the position offset to the vertices and ensures they stay within screen boundaries."""
+        offset_x, offset_y = self.position
+        adjusted_vertices = []
+
+        for x, y in vertices:
+            new_x = x + offset_x
+            new_y = y + offset_y
+
+            # Clamp the new coordinates to stay within the screen boundaries (0 to 1)
+            new_x = max(0.0, min(new_x, 1.0))
+            new_y = max(0.0, min(new_y, 1.0))
+
+            adjusted_vertices.append((new_x, new_y))
+
+        return adjusted_vertices
 
     def render(self, t, interpolation_func, screen_width, screen_height):
         """Renders the interpolated expression based on animation progress `t`."""
@@ -118,6 +141,7 @@ class Neutral(BaseExpression):
         transition_duration=0.2,
         interpolation=INTERPOLATION["linear"],
         sticky=True,
+        position=(0.0, 0.0),
     ):
         super().__init__(
             id,
@@ -127,6 +151,7 @@ class Neutral(BaseExpression):
             transition_duration,
             interpolation,
             sticky,
+            position,
         )
 
 
@@ -168,6 +193,7 @@ class Happy(BaseExpression):
         transition_duration=0.2,
         interpolation=INTERPOLATION["linear"],
         sticky=False,
+        position=(0.0, 0.0),
     ):
         super().__init__(
             id,
@@ -177,6 +203,7 @@ class Happy(BaseExpression):
             transition_duration,
             interpolation,
             sticky,
+            position,
         )
 
 
@@ -218,6 +245,7 @@ class Sad(BaseExpression):
         transition_duration=0.2,
         interpolation=INTERPOLATION["linear"],
         sticky=False,
+        position=(0.0, 0.0),
     ):
         super().__init__(
             id,
@@ -227,6 +255,7 @@ class Sad(BaseExpression):
             transition_duration,
             interpolation,
             sticky,
+            position,
         )
 
 
@@ -268,6 +297,7 @@ class Blink(BaseExpression):
         transition_duration=0.05,
         interpolation=INTERPOLATION["ease_in_out"],
         sticky=False,
+        position=(0.0, 0.0),
     ):
         super().__init__(
             id,
@@ -277,4 +307,5 @@ class Blink(BaseExpression):
             transition_duration,
             interpolation,
             sticky,
+            position,
         )
