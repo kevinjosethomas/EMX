@@ -2,7 +2,7 @@ import pygame
 import numpy as np
 import time
 import asyncio
-from .queue_manager import AnimationQueue
+
 from .interpolation import linear_interpolation, ease_in_out_interpolation
 from .expressions import Neutral
 from .idle import IdlingState
@@ -15,7 +15,6 @@ class Engine:
         self.screen_height = height
         self.screen = pygame.display.set_mode((width, height))
         self.clock = pygame.time.Clock()
-        self.queue = AnimationQueue()
         self.running = True
 
         # Async Queue for animations
@@ -37,27 +36,16 @@ class Engine:
     async def queue_animation(
         self,
         expression,
-        transition_duration=0.2,
-        animation_duration=1.0,
-        interpolation="linear",
     ):
-        """Queues an animation asynchronously."""
         await self.expression_queue.put(
-            (
-                expression,
-                transition_duration,
-                animation_duration,
-                interpolation,
-            )
+            expression,
         )
 
     async def handle_queue(self):
         """Asynchronously handle incoming animations from the queue."""
         while self.running:
             if not self.is_transitioning and not self.expression_queue.empty():
-                next_expr, next_trans_dur, next_anim_dur, interp_style = (
-                    await self.expression_queue.get()
-                )
+                next_expr = await self.expression_queue.get()
 
                 if next_expr:
                     self.previous_vertices = self.current_expression.render(
@@ -67,11 +55,16 @@ class Engine:
                         self.screen_height,
                     )
                     self.target_expression = next_expr
-                    self.transition_duration = next_trans_dur or 1.0
-                    self.animation_duration = next_anim_dur or 1.0
+                    print(next_expr.__class__.__name__)
+                    print(next_expr.duration)
+                    print(next_expr.transition_duration)
+                    self.transition_duration = (
+                        next_expr.transition_duration or 1.0
+                    )
+                    self.animation_duration = next_expr.duration or 1.0
                     self.interpolation_func = (
                         linear_interpolation
-                        if interp_style == "linear"
+                        if next_expr.interpolation == "linear"
                         else ease_in_out_interpolation
                     )
                     self.is_transitioning = True
@@ -99,11 +92,18 @@ class Engine:
 
                 if elapsed_time > self.animation_duration:
                     next_idle = self.idling_state.get_idle_expression()
+                    print(
+                        f"Idle expression: {next_idle.__class__.__name__}, Duration: {next_idle.duration}, Transition Duration: {next_idle.transition_duration}"
+                    )
                     if next_idle != self.current_expression:
                         self.previous_vertices = interpolated_vertices
                         self.target_expression = next_idle
                         self.is_transitioning = True
                         self.start_time = current_time
+                        self.transition_duration = (
+                            next_idle.transition_duration
+                        )
+                        self.animation_duration = next_idle.duration
 
             else:  # Handle transition state
                 t = min(1.0, elapsed_time / self.transition_duration)
@@ -136,13 +136,11 @@ class Engine:
                         for i in range(len(self.previous_vertices))
                     ]
 
-            # Render eyes
             left_eye = interpolated_vertices[:12]
             right_eye = interpolated_vertices[12:]
             pygame.draw.polygon(self.screen, (255, 255, 255), left_eye)
             pygame.draw.polygon(self.screen, (255, 255, 255), right_eye)
 
-            # Handle events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False

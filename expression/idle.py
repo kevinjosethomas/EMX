@@ -18,7 +18,7 @@ class IdlingState:
 
     def get_next_idle_time(self):
         """Returns a random time between 3-5 seconds for the next action."""
-        return time.time() + random.uniform(5, 7)
+        return time.time() + random.uniform(3, 5)
 
     def get_idle_expression(self):
         """Determines what the face should do during idle time."""
@@ -26,10 +26,10 @@ class IdlingState:
             self.blinking = False
             self.current_expression = Neutral()
         elif time.time() > self.next_idle_action_time:
-            # Randomly select an idle action
-            self.current_expression = random.choice([Blink(duration=0.1)])
+
+            self.current_expression = random.choice(
+                [Blink(duration=0.01, transition_duration=0.01)]
+            )
             self.blinking = True
-            self.next_idle_action_time = (
-                self.get_next_idle_time()
-            )  # Reset timer
+            self.next_idle_action_time = self.get_next_idle_time()
         return self.current_expression
