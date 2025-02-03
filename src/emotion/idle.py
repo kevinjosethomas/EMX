@@ -1,45 +1,39 @@
-import time
+import asyncio
 import random
-from .expressions import Neutral, Blink
+from .expressions import Blink
 
 
-class IdlingState:
+class IdleAnimationManager:
+    """Manages idle animations like blinking when no other expressions are active.
+
+    Runs a background loop that periodically queues blink animations when no other
+    expressions are queued. Only queues blinks when the expression queue is empty
+    or contains only neutral expressions.
     """
-    Handles idling animations when no expressions are queued.
-    - Randomly selects tasks such as blinking.
-    - Can later include looking around, reacting to environment, etc.
-    """
 
-    def __init__(self):
-        self.current_expression = Neutral(sticky=True)  # Default idle state
-        self.last_idle_time = time.time()  # Track last idle action
-        self.next_idle_action_time = self.get_next_idle_time()
-        self.blinking = False
+    def __init__(self, emotion_engine):
+        """Initialize the idle animation manager.
 
-    def get_next_idle_time(self):
-        """Returns a random time between 3-5 seconds for the next action."""
-        return time.time() + random.uniform(3, 5)
+        Args:
+            emotion_manager (Emotion): Reference to main emotion manager for queueing animations
+        """
 
-    def get_idle_expression(self):
-        """Determines what the face should do during idle time."""
+        self.emotion_engine = emotion_engine
+        self.running = True
 
-        if self.current_expression.sticky:
+    async def run_idle_loop(self):
+        """Background task that periodically queues idle animations.
 
-            if isinstance(self.current_expression, Neutral):
-                if self.blinking:
-                    self.blinking = False
-                    self.current_expression = Neutral()
-                elif time.time() > self.next_idle_action_time:
-                    self.current_expression = Blink(
-                        duration=0.05,
-                        transition_duration=0.05,
-                        interpolation="ease_in_out",
-                    )
-                    self.blinking = True
-                    self.next_idle_action_time = self.get_next_idle_time()
-            else:
-                return self.current_expression
-        else:
-            self.current_expression = Neutral()
+        Runs continuously while self.running is True. Only queues blink animations
+        when no other non-neutral expressions are in the queue.
+        """
 
-        return self.current_expression
+        while self.running:
+            if self.emotion_engine.expression_queue.empty():
+                next_expression = Blink(
+                    duration=0.05,
+                    transition_duration=0.05,
+                    interpolation="ease_in_out",
+                )
+                await self.emotion_engine.queue_animation(next_expression)
+            await asyncio.sleep(random.uniform(3, 5))

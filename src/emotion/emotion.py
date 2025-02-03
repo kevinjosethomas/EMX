@@ -1,8 +1,8 @@
 import time
 import pygame
 import asyncio
-from .idle import IdlingState
 from .expressions import Neutral
+from .idle import IdleAnimationManager
 from .interpolation import INTERPOLATION
 from pyee.asyncio import AsyncIOEventEmitter
 
@@ -13,6 +13,18 @@ class Emotion(AsyncIOEventEmitter):
     Controls the display and rendering of facial expressions, handles transitions
     between expressions, and manages the animation queue. Uses pygame for rendering
     and asyncio for animation scheduling.
+
+    Events:
+        expression_started: Emitted when a new expression begins playing with data:
+            - id: Unique identifier for the expression
+            - label: Name of the expression
+            - duration: Duration of the expression in seconds
+            - transition_duration: Duration of transition in seconds
+            - interpolation: Type of interpolation used
+        expression_completed: Emitted when an expression finishes with data:
+            - id: Unique identifier for the expression
+            - label: Name of the expression
+            - duration: Duration of the expression in seconds
 
     Attributes:
         screen_width (int): Width of display window in pixels
@@ -36,7 +48,7 @@ class Emotion(AsyncIOEventEmitter):
             fullscreen (bool, optional): Whether to use fullscreen. Defaults to False.
 
         Initializes pygame display, animation state variables, and expression queue.
-        Sets up initial neutral expression and idle animation state.
+        Sets up initial neutral expression and idle manger
         """
 
         super().__init__()
@@ -64,49 +76,39 @@ class Emotion(AsyncIOEventEmitter):
         self.interpolation_func = INTERPOLATION["linear"]
         self.is_transitioning = False
 
-        self.idling_state = IdlingState()
+        self.idle_manager = IdleAnimationManager(self)
         self.fps = 120
 
     async def queue_animation(
         self,
         expression,
     ):
-        """Queue a new expression for display.
+        """Add an expression to the animation queue.
 
         Args:
             expression (Expression): Expression object to be displayed.
                 Must implement render() method.
 
-        The expression will be added to the queue and displayed when previous
-        animations complete. Transitions between expressions are handled automatically.
+        The expression is added to an async queue and will be displayed when
+        previous expressions complete. No return value or direct animation control.
         """
 
         await self.expression_queue.put(
             expression,
         )
-        self.emit(
-            "expression_started",
-            {
-                "id": expression.id,
-                "label": expression.label,
-                "duration": expression.duration,
-                "transition_duration": expression.transition_duration,
-                "interpolation": expression.interpolation,
-            },
-        )
 
     async def handle_queue(self):
-        """Process queued expressions and handle transitions.
+        """Process queued expressions and manage transitions.
 
-        Continuously monitors the expression queue and initiates transitions
-        to new expressions when they become available. Manages the transition
-        state and timing between expressions.
+        Background task that:
+        - Monitors the expression queue for new expressions
+        - Emits completion event for current expression
+        - Sets up transition parameters for next expression
+        - Emits started event for new expression
+        - Updates animation state and timing
 
-        This method runs as a background task and continues while self.running
-        is True. It handles:
-        - Checking for new expressions in queue
-        - Starting transitions between expressions
-        - Updating transition state and timing
+        Runs continuously while self.running is True.
+        No parameters or return values.
         """
 
         while self.running:
@@ -114,9 +116,10 @@ class Emotion(AsyncIOEventEmitter):
                 next_expr = await self.expression_queue.get()
 
                 if next_expr:
-                    if self.current_expression.sticky:
-                        self.emit("idle_ended")
+                    # First emit completion for current expression
+                    self.emit("expression_completed", self.current_expression)
 
+                    # Set up transition
                     self.previous_vertices = self.current_expression.render(
                         1.0,
                         self.interpolation_func,
@@ -134,26 +137,27 @@ class Emotion(AsyncIOEventEmitter):
                     self.is_transitioning = True
                     self.start_time = time.perf_counter()
 
+                    # Now emit started for new expression
+                    self.emit("expression_started", next_expr)
+
             await asyncio.sleep(0.01)
 
     async def run(self):
-        """Main animation loop for rendering expressions.
+        """Main animation loop for expression rendering.
 
-        Continuously renders the current expression and handles transitions.
-        Manages the display window, animation timing, and idle animations.
-        Coordinates with handle_queue() for processing new expressions.
+        Manages:
+        - Background tasks for queue handling and idle animations
+        - Expression transitions and interpolation
+        - Frame rendering and timing
+        - Neutral expression queueing for non-sticky expressions
+        - Pygame event handling and window management
 
-        The loop:
-        - Clears screen and maintains consistent frame timing
-        - Renders current expression or transition state
-        - Handles idle animations when expression completes
-        - Maintains synchronized state with expression queue
-
-        This method runs until self.running is set to False.
-        Screen updates occur at the rate specified by self.fps.
+        Runs continuously while self.running is True.
+        No parameters or return values.
         """
 
         asyncio.create_task(self.handle_queue())
+        asyncio.create_task(self.idle_manager.run_idle_loop())
 
         while self.running:
             self.screen.fill((30, 30, 30))
@@ -168,35 +172,20 @@ class Emotion(AsyncIOEventEmitter):
                     self.screen_height,
                 )
 
-                if elapsed_time > self.animation_duration:
-                    if not self.current_expression.sticky:
-                        self.emit(
-                            "expression_completed",
-                            {
-                                "id": self.current_expression.id,
-                                "label": self.current_expression.label,
-                                "duration": self.current_expression.duration,
-                            },
+                # Only queue neutral if non-sticky expression completes
+                if (
+                    elapsed_time > self.animation_duration
+                    and not self.current_expression.sticky
+                    and self.expression_queue.empty()
+                ):
+                    await self.queue_animation(
+                        Neutral(
+                            duration=1.0,
+                            transition_duration=0.2,
+                            interpolation="linear",
+                            sticky=True,
                         )
-
-                    next_idle = self.idling_state.get_idle_expression()
-                    if next_idle != self.current_expression:
-                        if next_idle.sticky:
-                            self.emit("idle_started")
-
-                        self.previous_vertices = interpolated_vertices
-                        self.target_expression = next_idle
-                        self.is_transitioning = True
-                        self.start_time = current_time
-                        self.transition_duration = (
-                            next_idle.transition_duration
-                        )
-                        self.animation_duration = next_idle.duration
-                        self.interpolation_func = INTERPOLATION.get(
-                            next_idle.interpolation,
-                            INTERPOLATION["linear"],
-                        )
-
+                    )
             else:
                 t = min(1.0, elapsed_time / self.transition_duration)
 
@@ -228,6 +217,7 @@ class Emotion(AsyncIOEventEmitter):
                         for i in range(len(self.previous_vertices))
                     ]
 
+            # Render the eyes
             left_eye = interpolated_vertices[:12]
             right_eye = interpolated_vertices[12:]
             pygame.draw.polygon(self.screen, (255, 255, 255), left_eye)
