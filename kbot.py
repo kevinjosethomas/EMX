@@ -7,8 +7,9 @@ from src.emotion.expressions import Happy, Neutral
 dotenv.load_dotenv()
 
 robot = Robot(
-    voice_api_key=os.getenv("ELEVENLABS_API_KEY"),
-    voice_id="uGnrtOdzB5Y7D6kajQcE",
+    voice_api_key=os.getenv("HUME_API_KEY"),
+    voice_secret_key=os.getenv("HUME_SECRET_KEY"),
+    voice_config_id=os.getenv("HUME_CONFIG_ID"),
 )
 
 

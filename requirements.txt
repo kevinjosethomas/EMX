@@ -4,4 +4,4 @@ pygame==2.6.1
 mediapipe==0.10.20
 python-dotenv==1.0.1
 opencv-python==4.11.0.86
-elevenlabs==1.50.6
+"hume[microphone]"

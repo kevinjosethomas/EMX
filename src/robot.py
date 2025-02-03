@@ -2,6 +2,7 @@ import asyncio
 from src.voice import Voice
 from src.vision import Vision
 from src.emotion import Emotion
+from src.emotion.expressions import Happy, Sad, Neutral
 
 
 class Robot:
@@ -14,20 +15,40 @@ class Robot:
     Attributes:
         emotion (Emotion): Facial expression and animation system
         vision (Vision): Computer vision system for face detection
-        voice (Voice): Voice engine for ElevenLabs text-to-speech
+        voice (Voice): Voice engine for Hume AI text-to-speech
         event_handlers (dict): Mapping of event names to handler functions
 
     Events can be registered using the @event decorator, which will automatically
     wire up handlers to vision, emotion, and voice subsystems.
     """
 
-    def __init__(self, voice_api_key, voice_id):
+    def __init__(self, voice_api_key, voice_secret_key, voice_config_id):
         """Initialize robot with vision and emotion engines."""
 
         self.emotion = Emotion()
         self.vision = Vision()
-        self.voice = Voice(api_key=voice_api_key, voice_id=voice_id)
+        self.voice = Voice(
+            api_key=voice_api_key,
+            secret_key=voice_secret_key,
+            config_id=voice_config_id,
+        )
         self.event_handlers = {}
+
+        self.voice.on("_assistant_message", self._handle_voice_emotion)
+        self.voice.on(
+            "_assistant_message_end",
+            lambda: asyncio.create_task(
+                self.emotion.queue_animation(Neutral())
+            ),
+        )
+
+    async def _handle_voice_emotion(self, emotion: str):
+        if emotion == "happy":
+            await self.emotion.queue_animation(Happy())
+        elif emotion == "sad":
+            await self.emotion.queue_animation(Sad())
+        elif emotion == "neutral":
+            await self.emotion.queue_animation(Neutral())
 
     def event(self, event_name):
         def decorator(func):
@@ -53,7 +74,9 @@ class Robot:
         """
 
         self.emit("ready")
-        await asyncio.gather(self.emotion.run(), self.vision.run())
+        await asyncio.gather(
+            self.emotion.run(), self.vision.run(), self.voice.run()
+        )
 
     def emit(self, event_name, *args, **kwargs):
         """Emit an event to registered handlers.

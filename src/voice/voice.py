@@ -1,143 +1,94 @@
 import asyncio
-import traceback
+
+from hume import AsyncHumeClient, MicrophoneInterface
+from .websocket import WebSocketHandler
 from pyee.asyncio import AsyncIOEventEmitter
-from elevenlabs.client import AsyncElevenLabs
-from elevenlabs import play
+from hume.empathic_voice.chat.socket_client import ChatConnectOptions
 
 
 class Voice(AsyncIOEventEmitter):
-    """Voice synthesis engine using ElevenLabs API.
+    """Manages voice interaction using Hume AI's Empathic Voice Interface.
 
-    Handles text-to-speech conversion and audio playback using the ElevenLabs API.
-    Provides asynchronous methods for fetching and playing synthesized speech.
+    Handles real-time conversation and speech synthesis using the Hume AI API.
+    Connects to a WebSocket for bi-directional audio streaming and emotion analysis.
 
     Events:
-        speech_ready: Emitted when audio data is ready to play with data:
-            - audio: The raw audio bytes
-        speech_error: Emitted when an error occurs with data:
-            - error: Error message with traceback
+        _assistant_message: Emitted when assistant speaks with emotion data:
+            - happiness (float): Score for happy emotions
+            - love (float): Score for loving emotions
+            - fear (float): Score for fearful emotions
+            - sadness (float): Score for sad emotions
+            - anger (float): Score for angry emotions
+            - discomfort (float): Score for uncomfortable emotions
+            - concentration (float): Score for focused emotions
+            - desire (float): Score for desire emotions
+
+        _assistant_message_end: Emitted when assistant finishes speaking
 
     Attributes:
-        api_key (str): ElevenLabs API key
-        voice_id (str): ID of the voice to use for synthesis
-        client (AsyncElevenLabs): Async client for ElevenLabs API
+        client (AsyncHumeClient): Async client for Hume AI API
+        options (ChatConnectOptions): WebSocket connection configuration
+        microphone_id (int): ID of input microphone device
+        websocket_handler (WebSocketHandler): Handles WebSocket events and audio streaming
     """
 
-    def __init__(self, api_key, voice_id):
-        """Initialize the voice engine.
+    def __init__(self, api_key, secret_key, config_id, microphone_id=1):
+        """Initialize the voice engine and set up websockets for Hume AI
 
         Args:
-            api_key (str): ElevenLabs API key
+            api_key (str): Hume AI API key
             voice_id (str): ID of the voice to use for synthesis
         """
 
         super().__init__()
-        self.api_key = api_key
-        self.voice_id = voice_id
-        self.client = AsyncElevenLabs(api_key=self.api_key)
+        self.client = AsyncHumeClient(api_key=api_key)
+        self.options = ChatConnectOptions(
+            config_id=config_id, secret_key=secret_key
+        )
+        self.microphone_id = microphone_id
 
-    def _format_error(self, e: Exception) -> str:
-        """Format an exception with traceback information.
+        self.websocket_handler = WebSocketHandler()
+        self.websocket_handler.on(
+            "_assistant_message",
+            lambda emotion: self.emit("_assistant_message", emotion),
+        )
+        self.websocket_handler.on(
+            "_assistant_message_end",
+            lambda _: self.emit("_assistant_message_end"),
+        )
 
-        Args:
-            e (Exception): The exception to format
+    async def run(self):
+        """Starts the voice interaction system with Hume AI.
 
-        Returns:
-            str: Formatted error message with filename, line number and traceback
+        Creates a WebSocket connection to Hume AI's empathic voice service and
+        initializes a microphone stream for real-time audio input. The connection
+        handles bi-directional communication:
+        - Sending audio from the microphone to Hume AI
+        - Receiving speech synthesis and emotion analysis responses
+
+        The method runs until interrupted by the user or an error occurs.
+
+        Raises:
+            ConnectionError: If WebSocket connection fails
+            RuntimeError: If microphone initialization fails
         """
 
-        tb = traceback.extract_tb(e.__traceback__)
-        error_location = f"{tb[-1].filename}:{tb[-1].lineno}"
-        return f"Error in {error_location}: {str(e)}\n{traceback.format_exc()}"
+        async with self.client.empathic_voice.chat.connect_with_callbacks(
+            options=self.options,
+            on_open=self.websocket_handler.on_open,
+            on_message=self.websocket_handler.on_message,
+            on_close=self.websocket_handler.on_close,
+            on_error=self.websocket_handler.on_error,
+        ) as socket:
+            self.websocket_handler.set_socket(socket)
 
-    async def fetch_voice(self, text):
-        """Fetch synthesized voice data from ElevenLabs API.
-
-        Args:
-            text (str): The text to convert to speech
-
-        Returns:
-            AsyncGenerator: Generator yielding audio data chunks
-            None: If an error occurs during synthesis
-
-        Emits:
-            speech_error: If an error occurs during API call
-        """
-
-        try:
-
-            return self.client.text_to_speech.convert(
-                text=text,
-                voice_id=self.voice_id,
-                model_id="eleven_flash_v2_5",
-                output_format="mp3_44100_128",
+            microphone_task = asyncio.create_task(
+                MicrophoneInterface.start(
+                    socket,
+                    device=self.microphone_id,
+                    allow_user_interrupt=True,
+                    byte_stream=self.websocket_handler.byte_strs,
+                )
             )
-        except Exception as e:
-            error_msg = self._format_error(e)
-            print(error_msg)
-            # self.emit("speech_error", error_msg)
-            return None
 
-    async def collect_audio(self, generator):
-        """Collect audio data from async generator.
-
-        Args:
-            generator (AsyncGenerator): Generator yielding audio chunks
-
-        Returns:
-            bytes: Concatenated audio data
-            None: If an error occurs during collection
-
-        Emits:
-            speech_error: If an error occurs while collecting audio chunks
-        """
-
-        try:
-            audio_bytes = b""
-            async for chunk in generator:
-                audio_bytes += chunk
-            return audio_bytes
-        except Exception as e:
-            error_msg = self._format_error(e)
-            print(error_msg)
-            # self.emit("speech_error", error_msg)
-            return None
-
-    async def play_voice(self, audio):
-        """Play collected audio data.
-
-        Args:
-            audio (bytes): Audio data to play
-
-        Emits:
-            speech_ready: When audio playback starts
-            speech_error: If an error occurs during playback
-        """
-
-        try:
-            await asyncio.to_thread(play, audio)
-            # self.emit("speech_ready", audio)
-        except Exception as e:
-            error_msg = self._format_error(e)
-            print(error_msg)
-            # self.emit("speech_error", error_msg)
-
-    async def speak(self, text):
-        """Convert text to speech and play it.
-
-        High-level method that handles the complete text-to-speech pipeline:
-        1. Fetch synthesized voice from API
-        2. Collect audio data chunks
-        3. Play the audio
-
-        Args:
-            text (str): The text to convert to speech
-
-        Events are emitted by the individual methods called in the pipeline.
-        """
-
-        generator = await self.fetch_voice(text)
-        if generator:
-            audio = await self.collect_audio(generator)
-            if audio:
-                await self.play_voice(audio)
+            await microphone_task
