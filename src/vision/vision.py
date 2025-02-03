@@ -1,76 +1,109 @@
 import cv2
 import asyncio
-import mediapipe as mp
 from pyee.asyncio import AsyncIOEventEmitter
+from .face_detector import FaceDetector
+from .gesture_detector import GestureDetector
 
 
 class Vision(AsyncIOEventEmitter):
-    """Computer vision system that detects and tracks faces using MediaPipe.
+    """Main vision system that manages multiple detection modules.
 
-    Emits events when faces appear, disappear, and for continuous face tracking.
-    Inherits from AsyncIOEventEmitter to provide event handling capabilities.
-
-    Events:
-        face_appeared: Emitted when a face is first detected
-        face_disappeared: Emitted when a face is no longer detected
-        face_tracked: Emitted every frame with face position data
+    Coordinates frame capture and processing across all detectors.
+    Aggregates and relays events from individual detectors.
     """
 
-    def __init__(self):
-        """Initialize the vision system.
-
-        Sets up the video capture device and face detection model.
-        Initializes face tracking state.
-        """
+    def __init__(self, camera_id=2):
         super().__init__()
-        self.cap = cv2.VideoCapture(2)
-        self.face_detection = mp.solutions.face_detection.FaceDetection(
-            min_detection_confidence=0.5
+        self.camera_id = camera_id
+        self.cap = None
+        self.detectors = []
+        self.running = False
+
+        self.face_detector = FaceDetector()
+        self.gesture_detector = GestureDetector()
+        self.detectors.extend([self.face_detector, self.gesture_detector])
+
+        def forward_event(event_name, data=None):
+            if data is None:
+                self.emit(event_name)
+            else:
+                self.emit(event_name, data)
+
+        self.face_detector.on(
+            "face_appeared", lambda: forward_event("face_appeared")
         )
-        self.face_present = False  # Track face state
+        self.face_detector.on(
+            "face_disappeared", lambda: forward_event("face_disappeared")
+        )
+        self.face_detector.on(
+            "face_tracked", lambda data: forward_event("face_tracked", data)
+        )
+
+        self.gesture_detector.on(
+            "gesture_detected",
+            lambda data: forward_event("gesture_detected", data),
+        )
+
+    async def setup(self):
+        """Initialize camera and detector resources.
+
+        Opens the camera device and initializes all detection modules.
+        Must be called before running the vision system.
+
+        Raises:
+            RuntimeError: If camera cannot be opened
+            Exception: If detector initialization fails
+        """
+
+        self.cap = cv2.VideoCapture(self.camera_id)
+        for detector in self.detectors:
+            await detector.setup()
+
+    async def cleanup(self):
+        """Release all resources.
+
+        Closes camera device and cleans up detector resources.
+        Should be called when vision system is no longer needed.
+        """
+
+        if self.cap:
+            self.cap.release()
+        for detector in self.detectors:
+            await detector.cleanup()
 
     async def run(self):
-        """Main vision processing loop.
+        """Run the main vision processing loop.
 
-        Continuously captures frames from camera and processes them for face detection.
-        Emits events based on face detection results.
+        Continuously captures frames from camera and processes them through
+        all detection modules. Emits events based on detector results.
 
-        Events:
-            ready: When vision system starts
-            face_appeared: When a face first appears
-            face_tracked: Every frame with face data dictionary containing:
-                - x: normalized x coordinate of face center
-                - y: normalized y coordinate of face center
-                - size: normalized area of face bounding box
+        The loop continues until self.running is set to False.
+
+        Events are emitted for:
+            - Face detection/tracking
+            - Gesture recognition
+            - Any other enabled detectors
+
+        Note:
+            Calls setup() on start and cleanup() when done
+            Processes frames asynchronously to avoid blocking
         """
 
-        while True:
+        await self.setup()
+        self.running = True
 
+        while self.running:
             ret, frame = self.cap.read()
             if not ret:
                 break
 
             frame = cv2.flip(frame, 1)
-            results = self.face_detection.process(
-                cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            )
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            if results.detections:
-                if not self.face_present:
-                    self.emit("face_appeared")
-                    self.face_present = True
+            # Process frame through all detectors
+            for detector in self.detectors:
+                await detector.process_frame(rgb_frame)
 
-                detection = results.detections[0]
-                bbox = detection.location_data.relative_bounding_box
-                face_data = {
-                    "x": bbox.xmin + bbox.width / 2,
-                    "y": bbox.ymin + bbox.height / 2,
-                    "size": bbox.width * bbox.height,
-                }
-                self.emit("face_tracked", face_data)
-            else:
-                if self.face_present:
-                    self.emit("face_disappeared")
-                    self.face_present = False
+            await asyncio.sleep(0.01)
 
-            await asyncio.sleep(0.1)
+        await self.cleanup()

@@ -29,8 +29,15 @@ class Robot:
     def event(self, event_name):
         def decorator(func):
             self.event_handlers[event_name] = func
-            self.vision.on(event_name, func)
-            self.emotion.on(event_name, func)
+
+            async def wrapper(*args, **kwargs):
+                try:
+                    await func(*args, **kwargs)
+                except Exception as e:
+                    print(f"ERROR in {event_name} handler: {e}")
+
+            self.vision.on(event_name, wrapper)
+            self.emotion.on(event_name, wrapper)
             return func
 
         return decorator
