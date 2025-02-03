@@ -44,11 +44,11 @@ class Robot:
 
     async def _handle_voice_emotion(self, emotion: str):
         if emotion == "happy":
-            await self.emotion.queue_animation(Happy())
+            await self.emotion.queue_animation(Happy(sticky=True))
         elif emotion == "sad":
-            await self.emotion.queue_animation(Sad())
+            await self.emotion.queue_animation(Sad(sticky=True))
         elif emotion == "neutral":
-            await self.emotion.queue_animation(Neutral())
+            await self.emotion.queue_animation(Neutral(sticky=True))
 
     def event(self, event_name):
         def decorator(func):

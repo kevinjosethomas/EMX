@@ -1,6 +1,7 @@
-import asyncio
+import time
 import random
-from .expressions import Blink
+import asyncio
+from .expressions import Neutral, Blink, Squint
 
 
 class IdleAnimationManager:
@@ -20,20 +21,60 @@ class IdleAnimationManager:
 
         self.emotion_engine = emotion_engine
         self.running = True
+        self.last_squint = time.time()
 
     async def run_idle_loop(self):
         """Background task that periodically queues idle animations.
 
-        Runs continuously while self.running is True. Only queues blink animations
+        Runs continuously while self.running is True. Only queues idle animations
         when no other non-neutral expressions are in the queue.
         """
 
         while self.running:
             if self.emotion_engine.expression_queue.empty():
-                next_expression = Blink(
-                    duration=0.05,
-                    transition_duration=0.05,
-                    interpolation="ease_in_out",
-                )
-                await self.emotion_engine.queue_animation(next_expression)
-            await asyncio.sleep(random.uniform(3, 5))
+                current_time = time.time()
+
+                if current_time - self.last_squint >= random.uniform(10, 15):
+                    loc = (
+                        random.uniform(-0.5, 0.5),
+                        random.uniform(-0.5, 0.5),
+                    )
+                    self.last_squint = current_time
+
+                    if random.uniform(0, 1) > 0.5:
+                        await self.emotion_engine.queue_animation(
+                            Squint(
+                                duration=random.uniform(1, 4),
+                                transition_duration=0.2,
+                                interpolation="linear",
+                                position=loc,
+                            )
+                        )
+                    else:
+                        await self.emotion_engine.queue_animation(
+                            Neutral(
+                                duration=10,
+                                transition_duration=0.2,
+                                interpolation="linear",
+                                position=loc,
+                            )
+                        )
+                        await self.emotion_engine.queue_animation(
+                            Squint(
+                                duration=random.uniform(1, 4),
+                                transition_duration=0.2,
+                                interpolation="linear",
+                                position=loc,
+                            )
+                        )
+
+                else:
+                    next_expression = Blink(
+                        duration=0.05,
+                        transition_duration=0.05,
+                        interpolation="ease_in_out",
+                    )
+
+                    await self.emotion_engine.queue_animation(next_expression)
+
+            await asyncio.sleep(random.uniform(4, 6))
