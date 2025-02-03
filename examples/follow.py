@@ -1,8 +1,8 @@
 import cv2
 import asyncio
 import mediapipe as mp
-from expression.engine import Engine
-from expression.expressions import Neutral, Happy, Sad
+from emotion.engine import Engine
+from emotion.expressions import Neutral, Happy, Sad
 
 # Constants
 CAMERA_WIDTH, CAMERA_HEIGHT = 640, 480

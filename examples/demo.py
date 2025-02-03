@@ -1,6 +1,6 @@
 import asyncio
-from expression.engine import Engine
-from expression.expressions import Happy, Sad
+from emotion.engine import Engine
+from emotion.expressions import Happy, Sad
 
 
 async def main():
