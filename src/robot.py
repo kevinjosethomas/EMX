@@ -1,29 +1,32 @@
 import asyncio
-from src.vision.vision import Vision
-from src.emotion.emotion import Emotion
+from src.voice import Voice
+from src.vision import Vision
+from src.emotion import Emotion
 
 
 class Robot:
-    """Main robot control system integrating vision and emotion systems.
+    """Main robot control system integrating vision, emotion, and voice systems.
 
-    Manages the coordination between vision and emotion subsystems, handling
+    Manages the coordination between vision, emotion, and voice subsystems, handling
     events and their corresponding callbacks. Uses asyncio for concurrent
-    operation of vision and emotion systems.
+    operation of vision, emotion, and voice systems.
 
     Attributes:
         emotion (Emotion): Facial expression and animation system
         vision (Vision): Computer vision system for face detection
+        voice (Voice): Voice engine for ElevenLabs text-to-speech
         event_handlers (dict): Mapping of event names to handler functions
 
     Events can be registered using the @event decorator, which will automatically
-    wire up handlers to both vision and emotion subsystems.
+    wire up handlers to vision, emotion, and voice subsystems.
     """
 
-    def __init__(self):
+    def __init__(self, voice_api_key, voice_id):
         """Initialize robot with vision and emotion engines."""
 
         self.emotion = Emotion()
         self.vision = Vision()
+        self.voice = Voice(api_key=voice_api_key, voice_id=voice_id)
         self.event_handlers = {}
 
     def event(self, event_name):
@@ -49,8 +52,8 @@ class Robot:
         Emit 'ready' event when initialization is complete.
         """
 
-        await asyncio.gather(self.emotion.run(), self.vision.run())
         self.emit("ready")
+        await asyncio.gather(self.emotion.run(), self.vision.run())
 
     def emit(self, event_name, *args, **kwargs):
         """Emit an event to registered handlers.

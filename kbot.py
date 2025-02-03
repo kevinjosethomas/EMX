@@ -1,13 +1,21 @@
+import os
 import asyncio
+import dotenv
 from src.robot import Robot
-from src.emotion.expressions import Happy, Sad, Neutral
+from src.emotion.expressions import Happy, Neutral
 
-robot = Robot()
+dotenv.load_dotenv()
+
+robot = Robot(
+    voice_api_key=os.getenv("ELEVENLABS_API_KEY"),
+    voice_id="uGnrtOdzB5Y7D6kajQcE",
+)
 
 
 @robot.event("ready")
 async def on_ready():
     print("Robot is ready")
+    # await robot.voice.speak("Hello, I am ready to assist you.")
 
 
 @robot.event("face_appeared")
