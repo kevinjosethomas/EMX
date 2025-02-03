@@ -54,7 +54,7 @@ class Voice(AsyncIOEventEmitter):
         )
         self.websocket_handler.on(
             "_assistant_message_end",
-            lambda _: self.emit("_assistant_message_end"),
+            lambda: self.emit("_assistant_message_end"),
         )
 
     async def run(self):
@@ -86,7 +86,6 @@ class Voice(AsyncIOEventEmitter):
                 MicrophoneInterface.start(
                     socket,
                     device=self.microphone_id,
-                    allow_user_interrupt=True,
                     byte_stream=self.websocket_handler.byte_strs,
                 )
             )

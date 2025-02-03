@@ -112,7 +112,14 @@ class Emotion(AsyncIOEventEmitter):
         """
 
         while self.running:
-            if not self.is_transitioning and not self.expression_queue.empty():
+            current_time = time.perf_counter()
+            elapsed_time = current_time - self.start_time
+
+            if (
+                not self.is_transitioning
+                and not self.expression_queue.empty()
+                and elapsed_time >= self.animation_duration
+            ):
                 next_expr = await self.expression_queue.get()
 
                 if next_expr:
