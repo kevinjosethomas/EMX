@@ -3,47 +3,90 @@ from .interpolation import INTERPOLATION
 
 
 class BaseExpression:
-    """
-    Base class for expressions.
-    - Supports single-frame and multi-frame animations
-    - Uses normalized coordinates for screen independence
-    - Allows per-keyframe interpolation control
-    - Configurable duration and transition parameters
+    """Base class for facial expressions and animations.
+
+    Provides core functionality for rendering facial expressions and animations:
+    - Keyframe-based animation system
+    - Normalized coordinate system (0-1) for screen independence
+    - Configurable interpolation between keyframes
+    - Position and scale transformation support
+    - Sticky expressions that persist until changed
+
+    Attributes:
+        id (str): Unique identifier for the expression
+        label (str): Human-readable name of the expression
+        keyframes (list): List of vertex arrays defining expression frames
+        duration (float): Total animation duration in seconds
+        transition_duration (float): Transition time between expressions
+        interpolation (str): Name of interpolation method to use
+        sticky (bool): Whether expression persists after animation
+        position (tuple): (x,y) offset for expression, normalized 0-1
+        scale (float): Scale factor for expression size
+        current_frame (int): Index of current animation frame
     """
 
-    def __init__(
-        self,
-        id,
-        label,
-        keyframes,
-        duration=1.0,
-        transition_duration=0.2,
-        interpolation=INTERPOLATION.get("linear"),
-        sticky=False,
-        position=(0.0, 0.0),
-        scale=1.0,
-    ):
-        self.id = id
-        self.label = label
-        self.keyframes = keyframes
-        self.duration = duration
-        self.transition_duration = transition_duration
-        self.interpolation = interpolation
-        self.sticky = sticky
-        self.position = position
-        self.scale = scale  # Initialize scale
+    base_defaults = {
+        "id": "base",
+        "label": "Base",
+        "duration": 1.0,
+        "transition_duration": 0.2,
+        "interpolation": "linear",
+        "sticky": False,
+        "position": (0.0, 0.0),
+        "scale": 1.0,
+    }
 
-        self.interpolation_methods = self.define_interpolation_methods()
-        self.current_frame = 0
+    def __init__(self, **kwargs):
+        """Initialize a new expression.
+
+        Args:
+            id (str): Unique identifier for the expression
+            label (str): Human-readable name
+            keyframes (list): List of vertex arrays defining frames
+            duration (float, optional): Animation duration. Defaults to 1.0.
+            transition_duration (float, optional): Transition time. Defaults to 0.2.
+            interpolation (callable, optional): Interpolation function. Defaults to linear.
+            sticky (bool, optional): Whether expression persists. Defaults to False.
+            position (tuple, optional): (x,y) offset. Defaults to (0,0).
+            scale (float, optional): Size scaling. Defaults to 1.0.
+        """
+
+        settings = self.base_defaults.copy()
+        if hasattr(self.__class__, "defaults"):
+            settings.update(self.__class__.defaults)
+
+        settings.update(kwargs)
+
+        for key, value in settings.items():
+            if key == "interpolation":
+                value = INTERPOLATION[value]
+            setattr(self, key, value)
+
+        self.keyframes = self.__class__.keyframes
 
     def define_interpolation_methods(self):
-        """Subclasses can override this to define interpolation methods."""
-        return {}
+        """Define interpolation functions for keyframe transitions.
+
+        Returns:
+            dict: Mapping of keyframe indices to interpolation functions.
+                Default is linear interpolation for all transitions.
+
+        Can be overridden by subclasses to customize interpolation per keyframe.
+        """
+
+        return {i: self.interpolation for i in range(len(self.keyframes))}
 
     def get_interpolated_vertices(
         self, t, interpolation_func, screen_width, screen_height
     ):
-        """Interpolates smoothly between animation keyframes based on time `t`."""
+        """Define interpolation methods for keyframe transitions.
+
+        Returns:
+            dict: Mapping of keyframe indices to interpolation functions.
+                Default is linear interpolation for all transitions.
+
+        Can be overridden by subclasses to customize interpolation per keyframe.
+        """
         num_frames = len(self.keyframes)
 
         if num_frames == 1:
@@ -78,14 +121,35 @@ class BaseExpression:
         )
 
     def scale_vertices(self, vertices, screen_width, screen_height):
-        """Scales normalized coordinates (0-1) to the actual screen size and applies the scale factor."""
+        """Scale normalized vertices to screen coordinates with scaling factor.
+
+        Args:
+            vertices (list): List of (x,y) vertex coordinates in 0-1 range
+            screen_width (int): Width of display in pixels
+            screen_height (int): Height of display in pixels
+
+        Returns:
+            list: Scaled vertex coordinates in screen space
+        """
+
         return [
             (x * screen_width * self.scale, y * screen_height * self.scale)
             for x, y in vertices
         ]
 
     def apply_position_offset(self, vertices):
-        """Applies the position offset to the vertices and ensures they stay within screen boundaries."""
+        """Apply position offset to vertices while keeping within bounds.
+
+        Args:
+            vertices (list): List of (x,y) vertex coordinates
+
+        Returns:
+            list: Adjusted vertex coordinates clamped to screen bounds (0-1)
+
+        Shifts vertices by position offset and ensures coordinates stay within
+        valid screen space by clamping to 0-1 range.
+        """
+
         offset_x, offset_y = self.position
         adjusted_vertices = []
 
@@ -102,13 +166,34 @@ class BaseExpression:
         return adjusted_vertices
 
     def render(self, t, interpolation_func, screen_width, screen_height):
-        """Renders the interpolated expression based on animation progress `t`."""
+        """Render interpolated expression for current animation frame.
+
+        Args:
+            t (float): Animation progress from 0-1
+            interpolation_func (callable): Function to interpolate between keyframes
+            screen_width (int): Display width in pixels
+            screen_height (int): Display height in pixels
+
+        Returns:
+            list: Interpolated vertex coordinates for current frame
+        """
+
         return self.get_interpolated_vertices(
             t, interpolation_func, screen_width, screen_height
         )
 
 
 class Neutral(BaseExpression):
+
+    defaults = {
+        "id": "neutral",
+        "label": "Neutral",
+        "duration": 1.0,
+        "transition_duration": 0.2,
+        "interpolation": "linear",
+        "sticky": True,
+    }
+
     keyframes = [
         [
             [0.227, 0.227],
@@ -137,32 +222,17 @@ class Neutral(BaseExpression):
             [0.524, 0.775],
         ]
     ]
-
-    def __init__(
-        self,
-        id=1,
-        label="Neutral",
-        duration=1.0,
-        transition_duration=0.2,
-        interpolation=INTERPOLATION["linear"],
-        sticky=True,
-        position=(0.0, 0.0),
-        scale=1.0,
-    ):
-        super().__init__(
-            id,
-            label,
-            self.keyframes,
-            duration,
-            transition_duration,
-            interpolation,
-            sticky,
-            position,
-            scale,
-        )
 
 
 class Happy(BaseExpression):
+    defaults = {
+        "id": "happy",
+        "label": "Happy",
+        "duration": 1.0,
+        "transition_duration": 0.2,
+        "interpolation": "linear",
+    }
+
     keyframes = [
         [
             [0.227, 0.227],
@@ -191,32 +261,17 @@ class Happy(BaseExpression):
             [0.524, 0.775],
         ]
     ]
-
-    def __init__(
-        self,
-        id=2,
-        label="Happy",
-        duration=1.0,
-        transition_duration=0.2,
-        interpolation=INTERPOLATION["linear"],
-        sticky=False,
-        position=(0.0, 0.0),
-        scale=1.0,
-    ):
-        super().__init__(
-            id,
-            label,
-            self.keyframes,
-            duration,
-            transition_duration,
-            interpolation,
-            sticky,
-            position,
-            scale,
-        )
 
 
 class Sad(BaseExpression):
+    defaults = {
+        "id": "sad",
+        "label": "Sad",
+        "duration": 1.0,
+        "transition_duration": 0.2,
+        "interpolation": "linear",
+    }
+
     keyframes = [
         [
             [0.227, 0.227],
@@ -246,31 +301,16 @@ class Sad(BaseExpression):
         ]
     ]
 
-    def __init__(
-        self,
-        id=3,
-        label="Sad",
-        duration=1.0,
-        transition_duration=0.2,
-        interpolation=INTERPOLATION["linear"],
-        sticky=False,
-        position=(0.0, 0.0),
-        scale=1.0,
-    ):
-        super().__init__(
-            id,
-            label,
-            self.keyframes,
-            duration,
-            transition_duration,
-            interpolation,
-            sticky,
-            position,
-            scale,
-        )
-
 
 class Blink(BaseExpression):
+    defaults = {
+        "id": "blink",
+        "label": "Blink",
+        "duration": 0.1,
+        "transition_duration": 0.05,
+        "interpolation": "ease_in_out",
+    }
+
     keyframes = [
         [
             [0.225, 0.467],
@@ -299,26 +339,3 @@ class Blink(BaseExpression):
             [0.524, 0.535],
         ]
     ]
-
-    def __init__(
-        self,
-        id="blink",
-        label="Blink",
-        duration=0.1,
-        transition_duration=0.05,
-        interpolation=INTERPOLATION["ease_in_out"],
-        sticky=False,
-        position=(0.0, 0.0),
-        scale=1.0,
-    ):
-        super().__init__(
-            id,
-            label,
-            self.keyframes,
-            duration,
-            transition_duration,
-            interpolation,
-            sticky,
-            position,
-            scale,
-        )
