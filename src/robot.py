@@ -1,3 +1,4 @@
+import time
 import asyncio
 from src.voice import Voice
 from src.vision import Vision
@@ -34,6 +35,11 @@ class Robot:
         )
         self.event_handlers = {}
 
+        self.is_idle = False
+        self.last_activity_time = time.time()
+        self.idle_timeout = 5
+        self.idle_check_task = None
+
         self.voice.on("_assistant_message", self._handle_voice_emotion)
         self.voice.on(
             "_assistant_message_end",
@@ -42,6 +48,40 @@ class Robot:
             ),
         )
 
+    async def _check_idle_state(self):
+        """Background task to check and update idle state."""
+
+        while True:
+            current_time = time.time()
+            if (
+                not self.is_idle
+                and (current_time - self.last_activity_time)
+                >= self.idle_timeout
+            ):
+                await self.start_idle()
+            await asyncio.sleep(1)
+
+    async def _handle_activity(self):
+        """Handle any activity that should reset the idle timer."""
+
+        self.last_activity_time = time.time()
+        if self.is_idle:
+            await self.stop_idle()
+
+    async def start_idle(self):
+        """Start idle behavior"""
+
+        self.is_idle = True
+        self.emotion.idle_manager.running = True
+        self.emit("idle_started")
+
+    async def stop_idle(self):
+        """Stop idle behavio."""
+
+        self.is_idle = False
+        self.emotion.idle_manager.running = False
+        self.emit("idle_stopped")
+
     async def _handle_voice_emotion(self, emotion_scores: dict):
         """Handle emotion data from voice system and queue corresponding animation.
 
@@ -49,6 +89,7 @@ class Robot:
             emotion (dict): Emotion data from voice system with scores for different emotions
         """
 
+        await self._handle_activity()
         emotion = max(emotion_scores, key=emotion_scores.get)
         print(emotion)
 
@@ -89,9 +130,14 @@ class Robot:
         Emit 'ready' event when initialization is complete.
         """
 
+        self.idle_check_task = asyncio.create_task(self._check_idle_state())
+
         self.emit("ready")
         await asyncio.gather(
-            self.emotion.run(), self.vision.run(), self.voice.run()
+            self.emotion.run(),
+            self.vision.run(),
+            self.voice.run(),
+            self.idle_check_task,
         )
 
     def emit(self, event_name, *args, **kwargs):

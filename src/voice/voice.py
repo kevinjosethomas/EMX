@@ -32,7 +32,7 @@ class Voice(AsyncIOEventEmitter):
         websocket_handler (WebSocketHandler): Handles WebSocket events and audio streaming
     """
 
-    def __init__(self, api_key, secret_key, config_id, microphone_id=1):
+    def __init__(self, api_key, secret_key, config_id, microphone_id=None):
         """Initialize the voice engine and set up websockets for Hume AI
 
         Args:
@@ -85,7 +85,7 @@ class Voice(AsyncIOEventEmitter):
             microphone_task = asyncio.create_task(
                 MicrophoneInterface.start(
                     socket,
-                    device=self.microphone_id,
+                    device=self.microphone_id or None,
                     byte_stream=self.websocket_handler.byte_strs,
                 )
             )

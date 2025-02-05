@@ -1,7 +1,7 @@
 import time
 import random
 import asyncio
-from .expressions import Neutral, Blink, Squint
+from .expressions import Neutral, Blink
 
 
 class IdleAnimationManager:
@@ -20,7 +20,7 @@ class IdleAnimationManager:
         """
 
         self.emotion_engine = emotion_engine
-        self.running = True
+        self.running = False
         self.last_squint = time.time()
 
     async def run_idle_loop(self):
@@ -30,9 +30,8 @@ class IdleAnimationManager:
         when no other non-neutral expressions are in the queue.
         """
 
-        while self.running:
-            break
-            if self.emotion_engine.expression_queue.empty():
+        while True:
+            if self.running and self.emotion_engine.expression_queue.empty():
                 current_time = time.time()
 
                 if current_time - self.last_squint >= random.uniform(10, 15):
@@ -59,15 +58,6 @@ class IdleAnimationManager:
                                 transition_duration=0.1,
                                 interpolation="linear",
                                 position=loc,
-                            )
-                        )
-                        await self.emotion_engine.queue_animation(
-                            Neutral(
-                                duration=random.uniform(2, 4),
-                                transition_duration=0.1,
-                                interpolation="linear",
-                                position=loc,
-                                scale=1.1,
                             )
                         )
 
