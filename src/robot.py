@@ -2,7 +2,7 @@ import asyncio
 from src.voice import Voice
 from src.vision import Vision
 from src.emotion import Emotion
-from src.emotion.expressions import Happy, Sad, Neutral
+from src.emotion.expressions import Angry, Love, Scared, Happy, Sad, Neutral
 
 
 class Robot:
@@ -38,16 +38,32 @@ class Robot:
         self.voice.on(
             "_assistant_message_end",
             lambda: asyncio.create_task(
-                self.emotion.queue_animation(Neutral())
+                self.emotion.queue_animation(Neutral(sticky=True))
             ),
         )
 
-    async def _handle_voice_emotion(self, emotion: str):
-        if emotion == "happy":
+    async def _handle_voice_emotion(self, emotion_scores: dict):
+        """Handle emotion data from voice system and queue corresponding animation.
+
+        Args:
+            emotion (dict): Emotion data from voice system with scores for different emotions
+        """
+
+        emotion = max(emotion_scores, key=emotion_scores.get)
+        print(emotion)
+
+        if emotion == "happiness":
             await self.emotion.queue_animation(Happy(sticky=True))
-        elif emotion == "sad":
+        elif emotion == "love" or emotion == "desire":
+            await self.emotion.queue_animation(Love(sticky=True))
+        elif emotion == "fear":
+            await self.emotion.queue_animation(Scared(sticky=True))
+        elif emotion == "sadness":
             await self.emotion.queue_animation(Sad(sticky=True))
-        elif emotion == "neutral":
+        elif emotion == "anger":
+            await self.emotion.queue_animation(Angry(sticky=True))
+        else:
+            print("beep boop")
             await self.emotion.queue_animation(Neutral(sticky=True))
 
     def event(self, event_name):

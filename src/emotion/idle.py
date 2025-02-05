@@ -31,6 +31,7 @@ class IdleAnimationManager:
         """
 
         while self.running:
+            break
             if self.emotion_engine.expression_queue.empty():
                 current_time = time.time()
 
@@ -43,28 +44,30 @@ class IdleAnimationManager:
 
                     if random.uniform(0, 1) > 0.5:
                         await self.emotion_engine.queue_animation(
-                            Squint(
+                            Neutral(
                                 duration=random.uniform(1, 4),
-                                transition_duration=0.2,
+                                transition_duration=0.1,
                                 interpolation="linear",
                                 position=loc,
+                                scale=1.1,
                             )
                         )
                     else:
                         await self.emotion_engine.queue_animation(
                             Neutral(
-                                duration=10,
-                                transition_duration=0.2,
+                                duration=random.uniform(1, 2),
+                                transition_duration=0.1,
                                 interpolation="linear",
                                 position=loc,
                             )
                         )
                         await self.emotion_engine.queue_animation(
-                            Squint(
-                                duration=random.uniform(1, 4),
-                                transition_duration=0.2,
+                            Neutral(
+                                duration=random.uniform(2, 4),
+                                transition_duration=0.1,
                                 interpolation="linear",
                                 position=loc,
+                                scale=1.1,
                             )
                         )
 
