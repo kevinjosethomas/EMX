@@ -1,4 +1,5 @@
 import time
+import random
 import asyncio
 from src.voice import Voice
 from src.vision import Vision
@@ -82,7 +83,7 @@ class Robot:
         self.emotion.idle_manager.running = False
         self.emit("idle_stopped")
 
-    async def _handle_voice_emotion(self, emotion_scores: dict):
+    async def _handle_voice_emotion(self, emotion: str):
         """Handle emotion data from voice system and queue corresponding animation.
 
         Args:
@@ -90,22 +91,59 @@ class Robot:
         """
 
         await self._handle_activity()
-        emotion = max(emotion_scores, key=emotion_scores.get)
+
         print(emotion)
 
+        random_scale = random.uniform(0.97, 1.03)
+        random_position = (
+            random.uniform(-0.04, 0.04),
+            random.uniform(-0.04, 0.04),
+        )
+
         if emotion == "happiness":
-            await self.emotion.queue_animation(Happy(sticky=True))
+            await self.emotion.queue_animation(
+                Happy(
+                    scale=random_scale,
+                    position=random_position,
+                    sticky=True,
+                ),
+                force=True,
+            )
         elif emotion == "love" or emotion == "desire":
-            await self.emotion.queue_animation(Love(sticky=True))
+            await self.emotion.queue_animation(
+                Love(
+                    scale=random_scale,
+                    position=random_position,
+                    sticky=True,
+                ),
+                force=True,
+            )
         elif emotion == "fear":
-            await self.emotion.queue_animation(Scared(sticky=True))
+            await self.emotion.queue_animation(
+                Scared(
+                    scale=random_scale, position=random_position, sticky=True
+                ),
+                force=True,
+            )
         elif emotion == "sadness":
-            await self.emotion.queue_animation(Sad(sticky=True))
+            await self.emotion.queue_animation(
+                Sad(scale=random_scale, position=random_position, sticky=True),
+                force=True,
+            )
         elif emotion == "anger":
-            await self.emotion.queue_animation(Angry(sticky=True))
+            await self.emotion.queue_animation(
+                Angry(
+                    scale=random_scale, position=random_position, sticky=True
+                ),
+                force=True,
+            )
         else:
-            print("beep boop")
-            await self.emotion.queue_animation(Neutral(sticky=True))
+            await self.emotion.queue_animation(
+                Neutral(
+                    scale=random_scale, position=random_position, sticky=True
+                ),
+                force=True,
+            )
 
     def event(self, event_name):
         def decorator(func):

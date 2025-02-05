@@ -5,6 +5,63 @@ from pyee.asyncio import AsyncIOEventEmitter
 from hume.empathic_voice.chat.types import SubscribeEvent
 from hume.empathic_voice.chat.socket_client import ChatWebsocketConnection
 
+EMOTION_MAPPING = {
+    # Happiness category
+    "amusement": "happiness",
+    "aesthetic_appreciation": "happiness",
+    "contentment": "happiness",
+    "ecstasy": "happiness",
+    "excitement": "happiness",
+    "interest": "happiness",
+    "joy": "happiness",
+    "pride": "happiness",
+    "relief": "happiness",
+    "satisfaction": "happiness",
+    "triumph": "happiness",
+    "realization": "happiness",
+    "surprise_positive": "happiness",
+    # Love category
+    "admiration": "love",
+    "adoration": "love",
+    "awe": "love",
+    "love": "love",
+    "romance": "love",
+    "sympathy": "love",
+    # Fear category
+    "fear": "fear",
+    "horror": "fear",
+    "surprise_negative": "fear",
+    # Sadness category
+    "disappointment": "sadness",
+    "distress": "sadness",
+    "guilt": "sadness",
+    "nostalgia": "sadness",
+    "sadness": "sadness",
+    "shame": "sadness",
+    "tiredness": "sadness",
+    "empathic_pain": "sadness",
+    "pain": "sadness",
+    # Anger category
+    "anger": "anger",
+    "contempt": "anger",
+    "disgust": "anger",
+    "envy": "anger",
+    # Discomfort category
+    "doubt": "discomfort",
+    "anxiety": "discomfort",
+    "awkwardness": "discomfort",
+    "embarrassment": "discomfort",
+    "confusion": "discomfort",
+    "boredom": "discomfort",
+    # Concentration category
+    "calmness": "concentration",
+    "concentration": "concentration",
+    "contemplation": "concentration",
+    # Desire category
+    "craving": "desire",
+    "desire": "desire",
+}
+
 
 class WebSocketHandler(AsyncIOEventEmitter):
     """Handles WebSocket communication for Hume AI's Empathic Voice Interface.
@@ -77,79 +134,16 @@ class WebSocketHandler(AsyncIOEventEmitter):
         elif message.type == "assistant_message":
             scores = message.models.prosody.scores
 
-            emotions = {
-                "happiness": sum(
-                    [
-                        scores.amusement,
-                        scores.aesthetic_appreciation,
-                        scores.contentment,
-                        scores.ecstasy,
-                        scores.excitement,
-                        scores.interest,
-                        scores.joy,
-                        scores.pride,
-                        scores.relief,
-                        scores.satisfaction,
-                        scores.triumph,
-                        scores.realization,
-                        scores.surprise_positive,
-                    ]
-                ),
-                "love": sum(
-                    [
-                        scores.admiration,
-                        scores.adoration,
-                        scores.awe,
-                        scores.love,
-                        scores.romance,
-                        scores.sympathy,
-                    ]
-                ),
-                "fear": sum(
-                    [scores.fear, scores.horror, scores.surprise_negative]
-                ),
-                "sadness": sum(
-                    [
-                        scores.disappointment,
-                        scores.distress,
-                        scores.guilt,
-                        scores.nostalgia,
-                        scores.sadness,
-                        scores.shame,
-                        scores.tiredness,
-                        scores.empathic_pain,
-                        scores.pain,
-                    ]
-                ),
-                "anger": sum(
-                    [
-                        scores.anger,
-                        scores.contempt,
-                        scores.disgust,
-                        scores.envy,
-                    ]
-                ),
-                "discomfort": sum(
-                    [
-                        scores.doubt,
-                        scores.anxiety,
-                        scores.awkwardness,
-                        scores.embarrassment,
-                        scores.confusion,
-                        scores.boredom,
-                    ]
-                ),
-                "concentration": sum(
-                    [
-                        scores.calmness,
-                        scores.concentration,
-                        scores.contemplation,
-                    ]
-                ),
-                "desire": sum([scores.craving, scores.desire]),
-            }
+            # Find the emotion with the highest score
+            max_score = 0
+            dominant_emotion = None
 
-            self.emit("_assistant_message", emotions)
+            for emotion, score in scores.__dict__.items():
+                if score > max_score:
+                    max_score = score
+                    dominant_emotion = EMOTION_MAPPING.get(emotion)
+
+            self.emit("_assistant_message", dominant_emotion)
 
         elif message.type == "assistant_end":
             self.emit("_assistant_message_end")

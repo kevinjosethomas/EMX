@@ -79,23 +79,40 @@ class Emotion(AsyncIOEventEmitter):
         self.idle_manager = IdleAnimationManager(self)
         self.fps = 120
 
-    async def queue_animation(
-        self,
-        expression,
-    ):
+    async def queue_animation(self, expression, force=False):
         """Add an expression to the animation queue.
 
         Args:
             expression (Expression): Expression object to be displayed.
                 Must implement render() method.
-
-        The expression is added to an async queue and will be displayed when
-        previous expressions complete. No return value or direct animation control.
+            force (bool, optional): If True, clear queue and transition immediately.
+                Defaults to False.
         """
+        if force:
+            # Clear the queue
+            while not self.expression_queue.empty():
+                self.expression_queue.get_nowait()
 
-        await self.expression_queue.put(
-            expression,
-        )
+            self.emit("expression_completed", self.current_expression)
+
+            self.previous_vertices = self.current_expression.render(
+                1.0,
+                self.interpolation_func,
+                self.screen_width,
+                self.screen_height,
+            )
+            self.target_expression = expression
+            self.transition_duration = expression.transition_duration or 1.0
+            self.animation_duration = expression.duration or 1.0
+            self.interpolation_func = INTERPOLATION.get(
+                expression.interpolation, INTERPOLATION["linear"]
+            )
+            self.is_transitioning = True
+            self.start_time = time.perf_counter()
+
+            self.emit("expression_started", expression)
+        else:
+            await self.expression_queue.put(expression)
 
     async def handle_queue(self):
         """Process queued expressions and manage transitions.

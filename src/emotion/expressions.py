@@ -29,7 +29,7 @@ class BaseExpression:
         "id": "base",
         "label": "Base",
         "duration": 1.0,
-        "transition_duration": 0.2,
+        "transition_duration": 0.3,
         "interpolation": "linear",
         "sticky": False,
         "position": (0.0, 0.0),
