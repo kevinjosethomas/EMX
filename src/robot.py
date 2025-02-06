@@ -96,7 +96,7 @@ class Robot:
 
         await self._handle_activity()
 
-        print(emotion)
+        print(data)
 
         emotion = data["emotion"]
         duration = data["duration"]
