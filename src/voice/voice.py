@@ -1,5 +1,8 @@
 import io
+import os
+import time
 import base64
+import random
 import asyncio
 import sounddevice as sd
 from typing import cast, Any
@@ -38,7 +41,7 @@ class Voice(AsyncIOEventEmitter):
         emotion_model (AutoModel): Emotion detection model
     """
 
-    def __init__(self, openai_api_key, microphone_id=None):
+    def __init__(self, openai_api_key, microphone_id=None, debug=False):
         """Initialize the Voice system with OpenAI API and audio settings.
 
         This class manages the bidirectional audio stream between local microphone
@@ -47,6 +50,7 @@ class Voice(AsyncIOEventEmitter):
         Args:
             openai_api_key (str): API key for OpenAI authentication
             microphone_id (str, optional): Specific microphone device ID. Defaults to None.
+            debug (bool, optional): Enable debug audio recording
 
         Attributes:
             client: OpenAI API client instance
@@ -68,9 +72,17 @@ class Voice(AsyncIOEventEmitter):
         self.last_audio_item_id = None
 
         self.emotion_buffer = io.BytesIO()
-        self.emotion_chunk_size = 8
+        self.emotion_chunk_size = 5
         self.chunk_counter = 0
         self.emotion_model = AutoModel(model="iic/emotion2vec_plus_base")
+
+        self.debug = debug
+        self.debug_mic_buffer = io.BytesIO() if debug else None
+
+        if debug:
+            os.makedirs("debug_audio", exist_ok=True)
+            os.makedirs("debug_audio/input", exist_ok=True)
+            os.makedirs("debug_audio/output", exist_ok=True)
 
     async def _handle_session_created(self, conn):
         """Handle OpenAI session creation and setup.
@@ -186,6 +198,7 @@ class Voice(AsyncIOEventEmitter):
         emotion = await self.analyze_audio_emotion(emotion_audio)
         if emotion:
             detected_emotion = self._get_detected_emotion(emotion[0]["scores"])
+
             self.emit(
                 "_assistant_message",
                 {
@@ -193,6 +206,22 @@ class Voice(AsyncIOEventEmitter):
                     "duration": audio_duration,
                 },
             )
+
+            if self.debug:
+                try:
+                    filename = self._get_timestamp_filename(
+                        "output", detected_emotion
+                    )
+                    audio = AudioSegment(
+                        data=emotion_audio,
+                        sample_width=2,
+                        frame_rate=24000,
+                        channels=1,
+                    )
+                    audio.export(filename, format="wav")
+                    print(f"Saved output audio: {filename}")
+                except Exception as e:
+                    print(f"Error saving debug audio: {e}")
 
     def _reset_emotion_buffer(self):
         """Reset emotion analysis state for new utterance.
@@ -209,17 +238,16 @@ class Voice(AsyncIOEventEmitter):
         self.chunk_counter = 0
 
     def _get_detected_emotion(self, scores):
-        """Map raw emotion scores to simplified categories.
+        """Map raw emotion scores to simplified categories with bias adjustment.
 
         Takes raw emotion scores from FunASR model and maps them to a reduced set
-        of core emotions for more stable expression changes.
+        of core emotions, applying adjustments to favor more expressive emotions.
 
         Args:
             scores (list): Raw emotion probability scores from model
 
         Returns:
-            str: Simplified emotion category with highest probability
-                One of: anger, fear, happiness, neutral, sadness
+            str: Selected emotion category, biased towards expressive emotions
 
         Emotion mapping:
             - angry, disgusted -> anger
@@ -240,7 +268,27 @@ class Voice(AsyncIOEventEmitter):
             "surprised",  # surprised
             "neutral",  # unknown
         ]
-        return emotion_labels[scores.index(max(scores))]
+
+        adjusted_scores = scores.copy()
+
+        neutral_indices = [4, 5, 8]
+        for idx in neutral_indices:
+            adjusted_scores[idx] *= 0.9
+
+        expressive_indices = [
+            2,
+            3,
+            6,
+            7,
+        ]
+        for idx in expressive_indices:
+            adjusted_scores[idx] *= 1.3
+
+        adjusted_scores[0] *= 0.6
+
+        adjusted_scores = [s + random.uniform(0, 0.1) for s in adjusted_scores]
+
+        return emotion_labels[adjusted_scores.index(max(adjusted_scores))]
 
     async def wait_for_audio_completion(self):
         """Wait for audio playback to complete before re-enabling microphone.
@@ -259,6 +307,21 @@ class Voice(AsyncIOEventEmitter):
 
         await asyncio.sleep(0.1)
         self.should_send_audio.set()
+
+    def _get_timestamp_filename(self, prefix, emotion=None):
+        """Generate a timestamp-based filename for debug audio.
+
+        Args:
+            prefix (str): Prefix for filename ('input' or 'output')
+            emotion (str, optional): Emotion label for output files
+
+        Returns:
+            str: Formatted filename with timestamp
+        """
+        timestamp = int(time.time() * 1000)
+        if emotion:
+            return f"debug_audio/{prefix}/{timestamp}_{emotion}.wav"
+        return f"debug_audio/{prefix}/{timestamp}.wav"
 
     async def _get_connection(self) -> AsyncRealtimeConnection:
         """Get the current OpenAI API connection.
@@ -391,6 +454,9 @@ class Voice(AsyncIOEventEmitter):
         sent_audio = False
         read_size = int(SAMPLE_RATE * 0.1)
 
+        if self.debug:
+            self.debug_mic_buffer = io.BytesIO()
+
         stream = sd.InputStream(
             channels=CHANNELS,
             samplerate=SAMPLE_RATE,
@@ -405,10 +471,32 @@ class Voice(AsyncIOEventEmitter):
                 await asyncio.sleep(0.05)
 
                 if not self.should_send_audio.is_set():
+                    if self.debug and sent_audio:
+                        try:
+                            filename = self._get_timestamp_filename("input")
+
+                            if self.debug_mic_buffer.getvalue():
+                                audio = AudioSegment(
+                                    data=self.debug_mic_buffer.getvalue(),
+                                    sample_width=2,
+                                    frame_rate=24000,
+                                    channels=1,
+                                )
+                                audio.export(filename, format="wav")
+                                print(f"Saved input audio: {filename}")
+
+                            self.debug_mic_buffer = io.BytesIO()
+                            sent_audio = False
+                        except Exception as e:
+                            print(f"Error saving debug audio: {e}")
                     continue
 
                 if stream.read_available >= read_size:
                     data, _ = stream.read(read_size)
+
+                    if self.debug:
+                        self.debug_mic_buffer.write(data.tobytes())
+
                     connection = await self._get_connection()
 
                     if not sent_audio:
