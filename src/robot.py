@@ -24,17 +24,12 @@ class Robot:
     wire up handlers to vision, emotion, and voice subsystems.
     """
 
-    def __init__(
-        self, voice_api_key, voice_secret_key, voice_config_id, openai_api_key
-    ):
+    def __init__(self, openai_api_key):
         """Initialize robot with vision and emotion engines."""
 
         self.emotion = Emotion()
         self.vision = Vision()
         self.voice = Voice(
-            api_key=voice_api_key,
-            secret_key=voice_secret_key,
-            config_id=voice_config_id,
             openai_api_key=openai_api_key,
         )
         self.event_handlers = {}
@@ -86,7 +81,7 @@ class Robot:
         self.emotion.idle_manager.running = False
         self.emit("idle_stopped")
 
-    async def _handle_voice_emotion(self, emotion: str):
+    async def _handle_voice_emotion(self, data):
         """Handle emotion data from voice system and queue corresponding animation.
 
         Args:
@@ -95,57 +90,73 @@ class Robot:
 
         await self._handle_activity()
 
-        print(emotion)
+        print(data)
 
-        random_scale = random.uniform(0.97, 1.03)
-        random_position = (
-            random.uniform(-0.04, 0.04),
-            random.uniform(-0.04, 0.04),
-        )
+        emotion = data["emotion"]
+        duration = data["duration"]
+
+        # random_scale = random.uniform(0.97, 1.03)
+        # random_position = (
+        #     random.uniform(-0.04, 0.04),
+        #     random.uniform(-0.04, 0.04),
+        # )
+        random_scale = 1
+        random_position = (0, 0)
+        transition_duration = 0.3
 
         if emotion == "happiness":
             await self.emotion.queue_animation(
                 Happy(
                     scale=random_scale,
                     position=random_position,
-                    sticky=True,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
-        elif emotion == "love" or emotion == "desire":
+        elif emotion == "surprised":
             await self.emotion.queue_animation(
                 Love(
                     scale=random_scale,
                     position=random_position,
-                    sticky=True,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
         elif emotion == "fear":
             await self.emotion.queue_animation(
                 Scared(
-                    scale=random_scale, position=random_position, sticky=True
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
         elif emotion == "sadness":
             await self.emotion.queue_animation(
-                Sad(scale=random_scale, position=random_position, sticky=True),
-                force=True,
+                Sad(
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
+                ),
             )
         elif emotion == "anger":
             await self.emotion.queue_animation(
                 Angry(
-                    scale=random_scale, position=random_position, sticky=True
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
         else:
             await self.emotion.queue_animation(
                 Neutral(
-                    scale=random_scale, position=random_position, sticky=True
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
 
     def event(self, event_name):
