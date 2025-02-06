@@ -10,6 +10,7 @@ robot = Robot(
     voice_api_key=os.getenv("HUME_API_KEY"),
     voice_secret_key=os.getenv("HUME_SECRET_KEY"),
     voice_config_id=os.getenv("HUME_CONFIG_ID"),
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
 )
 
 

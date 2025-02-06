@@ -1,9 +1,13 @@
+import base64
 import asyncio
-
-from hume import AsyncHumeClient, MicrophoneInterface
-from .websocket import WebSocketHandler
+import numpy as np
+import sounddevice as sd
+from typing import cast, Any
+from openai import AsyncOpenAI
 from pyee.asyncio import AsyncIOEventEmitter
-from hume.empathic_voice.chat.socket_client import ChatConnectOptions
+from hume import AsyncHumeClient, MicrophoneInterface
+from .audio import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
+from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
 
 class Voice(AsyncIOEventEmitter):
@@ -32,7 +36,14 @@ class Voice(AsyncIOEventEmitter):
         websocket_handler (WebSocketHandler): Handles WebSocket events and audio streaming
     """
 
-    def __init__(self, api_key, secret_key, config_id, microphone_id=None):
+    def __init__(
+        self,
+        api_key,
+        secret_key,
+        openai_api_key,
+        config_id,
+        microphone_id=None,
+    ):
         """Initialize the voice engine and set up websockets for Hume AI
 
         Args:
@@ -41,53 +52,119 @@ class Voice(AsyncIOEventEmitter):
         """
 
         super().__init__()
-        self.client = AsyncHumeClient(api_key=api_key)
-        self.options = ChatConnectOptions(
-            config_id=config_id, secret_key=secret_key
+        self.client = AsyncOpenAI(
+            api_key=openai_api_key,
         )
         self.microphone_id = microphone_id
-
-        self.websocket_handler = WebSocketHandler()
-        self.websocket_handler.on(
-            "_assistant_message",
-            lambda emotion: self.emit("_assistant_message", emotion),
-        )
-        self.websocket_handler.on(
-            "_assistant_message_end",
-            lambda: self.emit("_assistant_message_end"),
-        )
+        self.connection = None
+        self.session = None
+        self.audio_player = AudioPlayerAsync()
+        self.should_send_audio = asyncio.Event()
+        self.connected = asyncio.Event()
+        self.last_audio_item_id = None
 
     async def run(self):
-        """Starts the voice interaction system with Hume AI.
+        asyncio.create_task(self.send_mic_audio())
 
-        Creates a WebSocket connection to Hume AI's empathic voice service and
-        initializes a microphone stream for real-time audio input. The connection
-        handles bi-directional communication:
-        - Sending audio from the microphone to Hume AI
-        - Receiving speech synthesis and emotion analysis responses
+        async with self.client.beta.realtime.connect(
+            model="gpt-4o-mini-realtime-preview"
+        ) as conn:
+            self.connection = conn
+            self.connected.set()
+            self.should_send_audio.clear()  # Start with audio disabled
 
-        The method runs until interrupted by the user or an error occurs.
+            async for event in conn:
+                print(f"Received event type: {event.type}")
 
-        Raises:
-            ConnectionError: If WebSocket connection fails
-            RuntimeError: If microphone initialization fails
-        """
+                if event.type == "session.created":
+                    print("session.created")
+                    self.session = event.session
+                    self.should_send_audio.set()
 
-        async with self.client.empathic_voice.chat.connect_with_callbacks(
-            options=self.options,
-            on_open=self.websocket_handler.on_open,
-            on_message=self.websocket_handler.on_message,
-            on_close=self.websocket_handler.on_close,
-            on_error=self.websocket_handler.on_error,
-        ) as socket:
-            self.websocket_handler.set_socket(socket)
+                    await conn.session.update(
+                        session={
+                            "voice": "ash",
+                            "turn_detection": {
+                                "type": "server_vad",
+                                "threshold": 0.7,
+                            },
+                        }
+                    )
+                    continue
 
-            microphone_task = asyncio.create_task(
-                MicrophoneInterface.start(
-                    socket,
-                    device=self.microphone_id or None,
-                    byte_stream=self.websocket_handler.byte_strs,
-                )
-            )
+                if event.type == "session.updated":
+                    print("session.updated")
+                    self.session = event.session
+                    continue
 
-            await microphone_task
+                if event.type == "response.audio.delta":
+                    print("response.audio.delta")
+                    self.should_send_audio.clear()
+
+                    if event.item_id != self.last_audio_item_id:
+                        self.audio_player.reset_frame_count()
+                        self.last_audio_item_id = event.item_id
+
+                    bytes_data = base64.b64decode(event.delta)
+                    self.audio_player.add_data(bytes_data)
+                    continue
+
+                if event.type == "response.done":
+                    print("response.done")
+
+                    while (
+                        self.audio_player.queue and self.audio_player.playing
+                    ):
+                        await asyncio.sleep(0.1)
+                    self.should_send_audio.set()
+                    continue
+
+                if event.type == "error":
+                    print(event.error)
+                    continue
+
+    async def _get_connection(self) -> AsyncRealtimeConnection:
+        await self.connected.wait()
+        assert self.connection is not None
+        return self.connection
+
+    async def send_mic_audio(self) -> None:
+        sent_audio = False
+        read_size = int(SAMPLE_RATE * 0.1)
+
+        stream = sd.InputStream(
+            channels=CHANNELS,
+            samplerate=SAMPLE_RATE,
+            dtype="int16",
+            blocksize=read_size,
+            latency="low",
+        )
+
+        stream.start()
+
+        try:
+            while True:
+                await asyncio.sleep(0.05)
+
+                if not self.should_send_audio.is_set():
+                    continue
+
+                frames_available = stream.read_available
+                if frames_available >= read_size:
+                    data, _ = stream.read(read_size)
+
+                    connection = await self._get_connection()
+
+                    if not sent_audio:
+                        await connection.send({"type": "response.cancel"})
+                        sent_audio = True
+
+                    await connection.input_audio_buffer.append(
+                        audio=base64.b64encode(cast(Any, data)).decode("utf-8")
+                    )
+
+        except Exception as e:
+            print(f"Error in audio capture: {e}")
+        finally:
+            stream.stop()
+            stream.close()

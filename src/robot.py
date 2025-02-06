@@ -24,7 +24,9 @@ class Robot:
     wire up handlers to vision, emotion, and voice subsystems.
     """
 
-    def __init__(self, voice_api_key, voice_secret_key, voice_config_id):
+    def __init__(
+        self, voice_api_key, voice_secret_key, voice_config_id, openai_api_key
+    ):
         """Initialize robot with vision and emotion engines."""
 
         self.emotion = Emotion()
@@ -33,6 +35,7 @@ class Robot:
             api_key=voice_api_key,
             secret_key=voice_secret_key,
             config_id=voice_config_id,
+            openai_api_key=openai_api_key,
         )
         self.event_handlers = {}
 
