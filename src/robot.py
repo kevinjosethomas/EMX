@@ -17,7 +17,7 @@ class Robot:
     Attributes:
         emotion (Emotion): Facial expression and animation system
         vision (Vision): Computer vision system for face detection
-        voice (Voice): Voice engine for Hume AI text-to-speech
+        voice (Voice): Voice engine with OpenAI TTS and emotion analysis
         event_handlers (dict): Mapping of event names to handler functions
 
     Events can be registered using the @event decorator, which will automatically
@@ -84,24 +84,30 @@ class Robot:
     async def _handle_voice_emotion(self, data):
         """Handle emotion data from voice system and queue corresponding animation.
 
+        Takes emotion analysis results from the emotion2vec+ model and maps them
+        to appropriate facial expressions. Expressions are scaled and positioned
+        randomly for natural variation.
+
         Args:
-            emotion (dict): Emotion data from voice system with scores for different emotions
+            data (dict): Emotion analysis data containing:
+                - emotion (str): Detected emotion category
+                - duration (float): Audio segment duration in seconds
         """
 
         await self._handle_activity()
 
-        print(data)
+        print(emotion)
 
         emotion = data["emotion"]
         duration = data["duration"]
 
-        # random_scale = random.uniform(0.97, 1.03)
-        # random_position = (
-        #     random.uniform(-0.04, 0.04),
-        #     random.uniform(-0.04, 0.04),
-        # )
-        random_scale = 1
-        random_position = (0, 0)
+        random_scale = random.uniform(0.97, 1.03)
+        random_position = (
+            random.uniform(-0.04, 0.04),
+            random.uniform(-0.04, 0.04),
+        )
+        # random_scale = 1
+        # random_position = (0, 0)
         transition_duration = 0.3
 
         if emotion == "happiness":
