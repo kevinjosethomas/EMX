@@ -2,6 +2,8 @@
 This code is directly ported from https://github.com/openai/openai-python/blob/main/examples/realtime/audio_util.py
 """
 
+from __future__ import annotations
+
 import io
 import base64
 import pyaudio
@@ -10,7 +12,6 @@ import threading
 import numpy as np
 import sounddevice as sd
 from pydub import AudioSegment
-from __future__ import annotations
 from typing import Callable, Awaitable
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 

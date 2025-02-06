@@ -7,3 +7,4 @@ opencv-python==4.11.0.86
 "hume[microphone]"
 "openai[realtime]"
 pyaudio
+websockets==12.0
