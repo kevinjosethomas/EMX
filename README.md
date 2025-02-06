@@ -62,12 +62,22 @@ The vision engine processes camera input to detect faces, facial landmarks, and 
 
 ### Voice Engine
 
-The voice engine allows for realtime conversations with the robot using Hume AI's Evi API. Besides generating text and audio, it provides sentiment/emotions for the robot's outputs, which are propagated to the above emotion engine to create more natural interactions.
+The voice engine enables real-time conversations with the robot using OpenAI's text-to-speech API. The system features bidirectional audio streaming and emotion analysis of the robot's speech output using the emotion2vec+ model. This creates more natural interactions by synchronizing facial expressions with the emotional content of speech.
+
+Key features:
+
+- Real-time audio streaming with OpenAI's TTS
+- Emotion analysis using [emotion2vec+](https://huggingface.co/emotion2vec/emotion2vec_plus_base) model
+- Automatic facial expression synchronization
+- Feedback prevention during playback
 
 It emits the following events:
 
-- `_assistant_message(emotion)` - when the robot is about to start speaking
-- `_assistant_message_end(emotion)` - when the robot has finished speaking
+- `_assistant_message(data)` - when emotion is detected in speech output
+  - data contains:
+    - emotion: detected emotion (happiness, anger, fear, sadness, neutral)
+    - duration: length of audio segment in seconds
+- `_assistant_message_end` - when speech output is complete
 
 ## Installation
 

@@ -17,23 +17,19 @@ class Robot:
     Attributes:
         emotion (Emotion): Facial expression and animation system
         vision (Vision): Computer vision system for face detection
-        voice (Voice): Voice engine for Hume AI text-to-speech
+        voice (Voice): Voice engine with OpenAI TTS and emotion analysis
         event_handlers (dict): Mapping of event names to handler functions
 
     Events can be registered using the @event decorator, which will automatically
     wire up handlers to vision, emotion, and voice subsystems.
     """
 
-    def __init__(self, voice_api_key, voice_secret_key, voice_config_id):
+    def __init__(self, openai_api_key, debug=False):
         """Initialize robot with vision and emotion engines."""
 
         self.emotion = Emotion()
         self.vision = Vision()
-        self.voice = Voice(
-            api_key=voice_api_key,
-            secret_key=voice_secret_key,
-            config_id=voice_config_id,
-        )
+        self.voice = Voice(openai_api_key=openai_api_key, debug=debug)
         self.event_handlers = {}
 
         self.is_idle = False
@@ -83,66 +79,88 @@ class Robot:
         self.emotion.idle_manager.running = False
         self.emit("idle_stopped")
 
-    async def _handle_voice_emotion(self, emotion: str):
+    async def _handle_voice_emotion(self, data):
         """Handle emotion data from voice system and queue corresponding animation.
 
+        Takes emotion analysis results from the emotion2vec+ model and maps them
+        to appropriate facial expressions. Expressions are scaled and positioned
+        randomly for natural variation.
+
         Args:
-            emotion (dict): Emotion data from voice system with scores for different emotions
+            data (dict): Emotion analysis data containing:
+                - emotion (str): Detected emotion category
+                - duration (float): Audio segment duration in seconds
         """
 
         await self._handle_activity()
 
-        print(emotion)
+        print(data)
+
+        emotion = data["emotion"]
+        duration = data["duration"]
 
         random_scale = random.uniform(0.97, 1.03)
         random_position = (
             random.uniform(-0.04, 0.04),
             random.uniform(-0.04, 0.04),
         )
+        # random_scale = 1
+        # random_position = (0, 0)
+        transition_duration = 0.3
 
         if emotion == "happiness":
             await self.emotion.queue_animation(
                 Happy(
                     scale=random_scale,
                     position=random_position,
-                    sticky=True,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
-        elif emotion == "love" or emotion == "desire":
+        elif emotion == "surprised":
             await self.emotion.queue_animation(
                 Love(
                     scale=random_scale,
                     position=random_position,
-                    sticky=True,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
         elif emotion == "fear":
             await self.emotion.queue_animation(
                 Scared(
-                    scale=random_scale, position=random_position, sticky=True
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
         elif emotion == "sadness":
             await self.emotion.queue_animation(
-                Sad(scale=random_scale, position=random_position, sticky=True),
-                force=True,
+                Sad(
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
+                ),
             )
         elif emotion == "anger":
             await self.emotion.queue_animation(
                 Angry(
-                    scale=random_scale, position=random_position, sticky=True
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
         else:
             await self.emotion.queue_animation(
                 Neutral(
-                    scale=random_scale, position=random_position, sticky=True
+                    scale=random_scale,
+                    position=random_position,
+                    duration=duration,
+                    transition_duration=transition_duration,
                 ),
-                force=True,
             )
 
     def event(self, event_name):
