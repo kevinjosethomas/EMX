@@ -1,3 +1,5 @@
+![demo](https://github.com/user-attachments/assets/75486b62-3325-4bb6-90c4-948af61f5b96)
+
 # 👾 EMX
 
 EMX (Emotional Matrix) is an asynchronous Python framework that combines computer vision, voice analysis, and procedural animation to create natural, expressive robotic eyes. The system reacts to human interaction through face tracking, gesture recognition, and emotional speech analysis. It also provides an interactive API to help extend the robot's capabilities by making it easy to integrate with other systems and sensors.
@@ -33,9 +35,9 @@ asyncio.run(robot.run())
 
 This above script initializes the robot's face and starts a conversation with the Hume AI model. Additionally, it continually tracks any faces seen through the camera and plays a happy animation when a face is first detected. The robot face already has built-in animations for emotion states, and has idle behaviour like blinking and looking around. This extensible and modular API will allow it to be easily integrated with other systems and sensors, like gesture detection.
 
-## Core Systems
+# Core Systems
 
-### Emotion Engine
+## ☺︎ Emotion Engine
 
 The emotion engine creates and visualizes facial expressions/animations to create a natural and expressive face for the robot. Rendered using pygame, the emotion engine interacts with other aspects of the robot to create cohesive and realistic facial expressions. It features:
 
@@ -52,7 +54,7 @@ It emits the following events:
 
 Currently, the following expressions are built-in: neutral, happy, love, scared, sad, angry, blink.
 
-### Vision Engine
+## 👁️‍🗨️ Vision Engine
 
 The vision engine processes camera input to detect faces, facial landmarks, and gestures using Google MediaPipe. It emits the following events:
 
@@ -60,7 +62,7 @@ The vision engine processes camera input to detect faces, facial landmarks, and 
 - `face_disappeared(face)` - when a face is no longer detected
 - `face_tracked(gesture)` - continuous face position updates
 
-### Voice Engine
+## 🗯️ Voice Engine
 
 The voice engine enables real-time conversations with the robot using OpenAI's text-to-speech API. The system features bidirectional audio streaming and emotion analysis of the robot's speech output using the emotion2vec+ model. This creates more natural interactions by synchronizing facial expressions with the emotional content of speech.
 
@@ -79,7 +81,7 @@ It emits the following events:
     - duration: length of audio segment in seconds
 - `_assistant_message_end` - when speech output is complete
 
-## Installation
+# Installation
 
 First, clone the repository and install the dependencies:
 

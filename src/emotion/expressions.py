@@ -131,20 +131,17 @@ class BaseExpression:
         Returns:
             list: Screen-space vertices constrained within bounds
         """
-        # First convert to normalized coordinates with scale
+
         scaled = [(x * self.scale, y * self.scale) for x, y in vertices]
 
-        # Find center point of the shape
         center_x = sum(x for x, _ in scaled) / len(scaled)
         center_y = sum(y for _, y in scaled) / len(scaled)
 
-        # Find current bounds relative to center
         min_x = min(x - center_x for x, _ in scaled) + center_x
         max_x = max(x - center_x for x, _ in scaled) + center_x
         min_y = min(y - center_y for y, _ in scaled) + center_y
         max_y = max(y - center_y for y, _ in scaled) + center_y
 
-        # Calculate scale adjustment to fit in normalized space
         width = max_x - min_x
         height = max_y - min_y
 
@@ -154,7 +151,6 @@ class BaseExpression:
         if height > 1.0:
             scale_adjust = min(scale_adjust, 1.0 / height)
 
-        # Calculate position adjustment needed after scaling
         final_scale = self.scale * scale_adjust
         scaled_and_centered = [
             (
@@ -164,7 +160,6 @@ class BaseExpression:
             for x, y in vertices
         ]
 
-        # Return screen space coordinates
         return [
             (x * screen_width, y * screen_height)
             for x, y in scaled_and_centered
@@ -181,31 +176,27 @@ class BaseExpression:
         """
         offset_x, offset_y = self.position
 
-        # Apply offset
         adjusted = [(x + offset_x, y + offset_y) for x, y in vertices]
 
-        # Find bounds
         min_x = min(x for x, _ in adjusted)
         max_x = max(x for x, _ in adjusted)
         min_y = min(y for _, y in adjusted)
         max_y = max(y for _, y in adjusted)
 
-        # Calculate required shift to keep in bounds
         x_shift = 0
-        width = max_x - min_x
+
         if min_x < 0:
             x_shift = -min_x
         elif max_x > 1:
             x_shift = 1 - max_x
 
         y_shift = 0
-        height = max_y - min_y
+
         if min_y < 0:
             y_shift = -min_y
         elif max_y > 1:
             y_shift = 1 - max_y
 
-        # Ensure we don't shift beyond bounds in other direction
         if min_x + x_shift < 0:
             x_shift = -min_x
         if max_x + x_shift > 1:
