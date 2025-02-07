@@ -284,7 +284,8 @@ class Voice(AsyncIOEventEmitter):
         for idx in expressive_indices:
             adjusted_scores[idx] *= 1.3
 
-        adjusted_scores[0] *= 0.6
+        adjusted_scores[0] *= 0.2
+        adjusted_scores[0] *= 0.2
 
         adjusted_scores = [s + random.uniform(0, 0.1) for s in adjusted_scores]
 

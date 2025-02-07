@@ -124,82 +124,97 @@ class BaseExpression:
         """Scale vertices while keeping shape within screen bounds.
 
         Args:
-            vertices (list): List of (x,y) vertex coordinates
+            vertices (list): List of (x,y) vertex coordinates in normalized space
             screen_width (int): Width of display in pixels
             screen_height (int): Height of display in pixels
 
         Returns:
-            list: Scaled vertices that keep shape within screen
+            list: Screen-space vertices constrained within bounds
         """
-        # First apply scaling to get intended size
-        scaled = [
-            (x * screen_width * self.scale, y * screen_height * self.scale)
-            for x, y in vertices
-        ]
+        # First convert to normalized coordinates with scale
+        scaled = [(x * self.scale, y * self.scale) for x, y in vertices]
 
-        # Find current bounds
-        min_x = min(x for x, _ in scaled)
-        max_x = max(x for x, _ in scaled)
-        min_y = min(y for _, y in scaled)
-        max_y = max(y for _, y in scaled)
+        # Find center point of the shape
+        center_x = sum(x for x, _ in scaled) / len(scaled)
+        center_y = sum(y for _, y in scaled) / len(scaled)
 
-        # Calculate scale adjustment if needed
+        # Find current bounds relative to center
+        min_x = min(x - center_x for x, _ in scaled) + center_x
+        max_x = max(x - center_x for x, _ in scaled) + center_x
+        min_y = min(y - center_y for y, _ in scaled) + center_y
+        max_y = max(y - center_y for y, _ in scaled) + center_y
+
+        # Calculate scale adjustment to fit in normalized space
         width = max_x - min_x
         height = max_y - min_y
 
-        x_scale = 1.0
-        if width > screen_width:
-            x_scale = screen_width / width
+        scale_adjust = 1.0
+        if width > 1.0:
+            scale_adjust = min(scale_adjust, 1.0 / width)
+        if height > 1.0:
+            scale_adjust = min(scale_adjust, 1.0 / height)
 
-        y_scale = 1.0
-        if height > screen_height:
-            y_scale = screen_height / height
-
-        # Use the more constraining scale
-        adjust_scale = min(x_scale, y_scale)
-
-        # Apply final scaling
-        final_scale = self.scale * adjust_scale
-        return [
-            (x * screen_width * final_scale, y * screen_height * final_scale)
+        # Calculate position adjustment needed after scaling
+        final_scale = self.scale * scale_adjust
+        scaled_and_centered = [
+            (
+                (x - center_x) * final_scale + center_x,
+                (y - center_y) * final_scale + center_y,
+            )
             for x, y in vertices
         ]
 
+        # Return screen space coordinates
+        return [
+            (x * screen_width, y * screen_height)
+            for x, y in scaled_and_centered
+        ]
+
     def apply_position_offset(self, vertices):
-        """Apply position offset while keeping entire shape within bounds.
+        """Apply position offset while keeping shape within bounds.
 
         Args:
             vertices (list): List of (x,y) vertex coordinates
 
         Returns:
-            list: Position-adjusted vertices that keep shape within screen
+            list: Position-adjusted vertices in normalized space
         """
-
         offset_x, offset_y = self.position
 
-        # Apply initial offset to get intended positions
+        # Apply offset
         adjusted = [(x + offset_x, y + offset_y) for x, y in vertices]
 
-        # Find the bounding box of the expression
+        # Find bounds
         min_x = min(x for x, _ in adjusted)
         max_x = max(x for x, _ in adjusted)
         min_y = min(y for _, y in adjusted)
         max_y = max(y for _, y in adjusted)
 
-        # Calculate how much we need to shift to keep expression in bounds
+        # Calculate required shift to keep in bounds
         x_shift = 0
+        width = max_x - min_x
         if min_x < 0:
             x_shift = -min_x
         elif max_x > 1:
             x_shift = 1 - max_x
 
         y_shift = 0
+        height = max_y - min_y
         if min_y < 0:
             y_shift = -min_y
         elif max_y > 1:
             y_shift = 1 - max_y
 
-        # Apply the final adjustment to keep in bounds
+        # Ensure we don't shift beyond bounds in other direction
+        if min_x + x_shift < 0:
+            x_shift = -min_x
+        if max_x + x_shift > 1:
+            x_shift = 1 - max_x
+        if min_y + y_shift < 0:
+            y_shift = -min_y
+        if max_y + y_shift > 1:
+            y_shift = 1 - max_y
+
         return [(x + x_shift, y + y_shift) for x, y in adjusted]
 
     def render(self, t, interpolation_func, screen_width, screen_height):

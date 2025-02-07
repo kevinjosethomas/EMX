@@ -73,7 +73,6 @@ class FaceDetector(BaseDetector):
                 "size": bbox.width * bbox.height,
             }
 
-            print(self.debug)
             if self.debug:
                 self.mp_drawing.draw_detection(frame, detection)
                 cv2.imshow(
