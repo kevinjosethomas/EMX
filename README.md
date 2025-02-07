@@ -1,6 +1,6 @@
-# 👾
+# 👾 EMX
 
-? is an asynchronous Python framework that combines computer vision, voice analysis, and procedural animation to create natural, expressive robotic eyes. The system reacts to human interaction through face tracking, gesture recognition, and emotional speech analysis. It also provides an interactive API to help extend the robot's capabilities by making it easy to integrate with other systems and sensors.
+EMX (Emotional Matrix) is an asynchronous Python framework that combines computer vision, voice analysis, and procedural animation to create natural, expressive robotic eyes. The system reacts to human interaction through face tracking, gesture recognition, and emotional speech analysis. It also provides an interactive API to help extend the robot's capabilities by making it easy to integrate with other systems and sensors.
 
 Currently, it serves as a simple robot operating system with a high-level interface for controlling the robot's facial expressions, based on voice and vision systems. It is designed to be modular and extensible, with a focus on real-time performance and natural interactions.
 
@@ -85,8 +85,8 @@ First, clone the repository and install the dependencies:
 
 ```
 # Clone the repository
-git clone https://github.com/kevinjosethomas/k-emotion.git
-cd k-emotion
+git clone https://github.com/kevinjosethomas/EMX.git
+cd EMX
 
 # Create virtual environment
 python -m venv venv
