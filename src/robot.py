@@ -28,7 +28,7 @@ class Robot:
         """Initialize robot with vision and emotion engines."""
 
         self.emotion = Emotion()
-        self.vision = Vision()
+        self.vision = Vision(debug=debug)
         self.voice = Voice(openai_api_key=openai_api_key, debug=debug)
         self.event_handlers = {}
 

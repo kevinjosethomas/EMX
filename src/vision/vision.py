@@ -12,14 +12,14 @@ class Vision(AsyncIOEventEmitter):
     Aggregates and relays events from individual detectors.
     """
 
-    def __init__(self, camera_id=2):
+    def __init__(self, camera_id=2, debug=False):
         super().__init__()
         self.camera_id = camera_id
         self.cap = None
         self.detectors = []
         self.running = False
 
-        self.face_detector = FaceDetector()
+        self.face_detector = FaceDetector(debug=debug)
         self.gesture_detector = GestureDetector()
         self.detectors.extend([self.face_detector, self.gesture_detector])
 
@@ -100,7 +100,6 @@ class Vision(AsyncIOEventEmitter):
             frame = cv2.flip(frame, 1)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Process frame through all detectors
             for detector in self.detectors:
                 await detector.process_frame(rgb_frame)
 

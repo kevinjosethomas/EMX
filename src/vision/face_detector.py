@@ -1,3 +1,4 @@
+import cv2
 import mediapipe as mp
 from .base_detector import BaseDetector
 
@@ -11,17 +12,20 @@ class FaceDetector(BaseDetector):
         face_tracked: Every frame with face position data
     """
 
-    def __init__(self, min_detection_confidence=0.5):
+    def __init__(self, min_detection_confidence=0.5, debug=False):
         """Initialize the face detector.
 
         Args:
             min_detection_confidence (float): Minimum confidence value ([0.0, 1.0]) for face detection.
+            debug (bool): Whether to enable debug mode
         """
 
         super().__init__()
         self.min_detection_confidence = min_detection_confidence
         self.face_detection = None
         self.face_present = False
+        self.debug = debug
+        self.mp_drawing = mp.solutions.drawing_utils
 
     async def setup(self):
         """Initialize the face detection model.
@@ -68,8 +72,25 @@ class FaceDetector(BaseDetector):
                 "y": bbox.ymin + bbox.height / 2,
                 "size": bbox.width * bbox.height,
             }
+
+            print(self.debug)
+            if self.debug:
+                self.mp_drawing.draw_detection(frame, detection)
+                cv2.imshow(
+                    "Face Detection Debug",
+                    cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                )
+
+                cv2.waitKey(1)
+
             self.emit("face_tracked", face_data)
         else:
             if self.face_present:
                 self.emit("face_disappeared")
                 self.face_present = False
+
+        if self.debug:
+            cv2.imshow(
+                "Face Detection Debug", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            )
+            cv2.waitKey(1)
