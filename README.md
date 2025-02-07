@@ -1,4 +1,4 @@
-![demo](https://github.com/user-attachments/assets/75486b62-3325-4bb6-90c4-948af61f5b96)
+<img src="https://github.com/user-attachments/assets/75486b62-3325-4bb6-90c4-948af61f5b96" width="900px" height="536.5px" />
 
 # 👾 EMX
 
@@ -103,10 +103,11 @@ python3 -m pip install -r requirements.txt
 Create a `.env` file in the root directory with the following content:
 
 ```env
-HUME_API_KEY=your_api_key
-HUME_SECRET_KEY=your_secret_key
-HUME_CONFIG_ID=your_config_id
+# OpenAI Credentials
+OPENAI_API_KEY=your_api_key_string
 ```
 
 Develop a basic script using the robot API as shown above, and run it:
 `python3 bot.py`
+
+---
