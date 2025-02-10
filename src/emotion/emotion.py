@@ -1,7 +1,9 @@
 import time
 import pygame
 import asyncio
-from .expressions import Neutral
+import numpy as np
+import scipy.interpolate as interpolate
+from .expressions import Neutral, BaseExpression
 from .idle import IdleAnimationManager
 from .interpolation import INTERPOLATION
 from pyee.asyncio import AsyncIOEventEmitter
@@ -79,6 +81,32 @@ class Emotion(AsyncIOEventEmitter):
         self.idle_manager = IdleAnimationManager(self)
         self.fps = 120
 
+    def bspline_interpolation(self, points, n_points=200):
+        """Smoothen expression curve using B-spline interpolation.
+
+        Args:
+            points (list): List of (x, y) coordinates.
+            n_points (int): Number of interpolated points.
+
+        Returns:
+            list: List of interpolated (x, y) coordinates.
+        """
+
+        x = np.array([p[0] for p in points])
+        y = np.array([p[1] for p in points])
+
+        if len(points) < 4:
+            return points
+
+        points = points + [points[0]]
+
+        tck, u = interpolate.splprep(
+            [x, y], k=min(3, len(points) - 1), s=0, per=True
+        )
+        u = np.linspace(0, 1, num=n_points, endpoint=True)
+        out = interpolate.splev(u, tck)
+        return list(zip(out[0], out[1]))
+
     async def queue_animation(self, expression, force=False):
         """Add an expression to the animation queue.
 
@@ -88,8 +116,8 @@ class Emotion(AsyncIOEventEmitter):
             force (bool, optional): If True, clear queue and transition immediately.
                 Defaults to False.
         """
+
         if force:
-            # Clear the queue
             while not self.expression_queue.empty():
                 self.expression_queue.get_nowait()
 
@@ -140,10 +168,9 @@ class Emotion(AsyncIOEventEmitter):
                 next_expr = await self.expression_queue.get()
 
                 if next_expr:
-                    # First emit completion for current expression
+
                     self.emit("expression_completed", self.current_expression)
 
-                    # Set up transition
                     self.previous_vertices = self.current_expression.render(
                         1.0,
                         self.interpolation_func,
@@ -161,7 +188,6 @@ class Emotion(AsyncIOEventEmitter):
                     self.is_transitioning = True
                     self.start_time = time.perf_counter()
 
-                    # Now emit started for new expression
                     self.emit("expression_started", next_expr)
 
             await asyncio.sleep(0.01)
@@ -241,9 +267,9 @@ class Emotion(AsyncIOEventEmitter):
                         for i in range(len(self.previous_vertices))
                     ]
 
-            # Render the eyes
-            left_eye = interpolated_vertices[:12]
-            right_eye = interpolated_vertices[12:]
+            left_eye = self.bspline_interpolation(interpolated_vertices[:12])
+            right_eye = self.bspline_interpolation(interpolated_vertices[12:])
+
             pygame.draw.polygon(self.screen, (255, 255, 255), left_eye)
             pygame.draw.polygon(self.screen, (255, 255, 255), right_eye)
 

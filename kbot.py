@@ -1,8 +1,9 @@
 import os
 import asyncio
 import dotenv
+import random
 from src.robot import Robot
-from src.emotion.expressions import Love, Neutral, Sad, Happy
+from src.emotion.expressions import Love, Neutral, Sad, Happy, Angry
 
 dotenv.load_dotenv()
 
@@ -20,12 +21,20 @@ async def on_ready():
 
 @robot.event("face_appeared")
 async def on_face_appeared():
-    await robot.emotion.queue_animation(Love(scale=1.2, duration=1.0))
+    expressions = [
+        Love(scale=1.2, duration=1.0),
+        Neutral(duration=1.0),
+        Sad(scale=0.8, duration=1.0),
+        Happy(duration=1.0),
+        Angry(duration=1.0),
+    ]
+    expression = random.choice(expressions)
+    await robot.emotion.queue_animation(expression, force=True)
 
 
-@robot.event("face_disappeared")
-async def on_face_disappeared():
-    await robot.emotion.queue_animation(Sad(scale=0.8, duration=1.0))
+# @robot.event("face_disappeared")
+# async def on_face_disappeared():
+#     await robot.emotion.queue_animation(Sad(scale=0.8, duration=1.0))
 
 
 # @robot.event("face_tracked")
