@@ -169,7 +169,8 @@ class Voice(AsyncIOEventEmitter):
             await self._analyze_emotion_buffer()
             self._reset_emotion_buffer()
 
-        self.audio_player.add_data(audio_bytes)
+        processed_audio = self._apply_robot_effect(audio_bytes)
+        self.audio_player.add_data(processed_audio)
 
     async def _analyze_emotion_buffer(self):
         """Analyze emotion in accumulated audio buffer and emit results.
@@ -284,7 +285,6 @@ class Voice(AsyncIOEventEmitter):
         for idx in expressive_indices:
             adjusted_scores[idx] *= 1.3
 
-        adjusted_scores[0] *= 0.2
         adjusted_scores[0] *= 0.2
 
         adjusted_scores = [s + random.uniform(0, 0.1) for s in adjusted_scores]
@@ -512,3 +512,45 @@ class Voice(AsyncIOEventEmitter):
         finally:
             stream.stop()
             stream.close()
+
+    def _apply_robot_effect(self, audio_bytes):
+        """Apply robotic effects to the audio while maintaining clarity and cuteness.
+
+        Args:
+            audio_bytes (bytes): Raw PCM audio data at 24kHz, 16-bit, mono
+
+        Returns:
+            bytes: Processed audio data with robotic effects
+        """
+        try:
+            audio = AudioSegment(
+                data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
+            )
+
+            # Increase pitch shift for more cuteness
+            pitched = audio._spawn(
+                audio.raw_data,
+                overrides={"frame_rate": int(audio.frame_rate * 1.15)},
+            ).set_frame_rate(24000)
+
+            # Add stronger robotic resonance
+            resonance = pitched.overlay(
+                pitched + 12,
+                position=25,
+            )
+
+            # Add a second layer of resonance for more robotic effect
+            resonance = resonance.overlay(
+                pitched - 6,
+                position=40,
+            )
+
+            normalized = resonance.normalize()
+
+            buffer = io.BytesIO()
+            normalized.export(buffer, format="raw")
+            return buffer.getvalue()
+
+        except Exception as e:
+            print(f"Error applying robot effect: {e}")
+            return audio_bytes
