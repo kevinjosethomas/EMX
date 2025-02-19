@@ -113,8 +113,11 @@ class Vision(AsyncIOEventEmitter):
 
         await self.cleanup()
 
-    async def get_scene_description(self):
+    async def get_scene_description(self, openai_client=None):
         """Get a description of the current camera frame.
+
+        Args:
+            openai_client: AsyncOpenAI client instance to pass to scene descriptor
 
         Returns:
             str: Detailed description of what the robot can see
@@ -139,7 +142,9 @@ class Vision(AsyncIOEventEmitter):
         frame = cv2.flip(frame, 1)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        description = self.scene_descriptor.describe_frame(rgb_frame)
+        description = await self.scene_descriptor.describe_frame(
+            rgb_frame, openai_client=openai_client
+        )
         self.last_description_time = current_time
 
         return description

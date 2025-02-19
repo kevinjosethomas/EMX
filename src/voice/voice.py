@@ -13,7 +13,7 @@ from pyee.asyncio import AsyncIOEventEmitter
 from .audio import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
-SYSTEM_PROMPT = """You are the voice of K-Bot. You can see through your camera by using the describe_vision function. NEVER say that you cannot see. You can—just use the function. You do not yet have the capability to control movement, but you communicate as the robot itself, never breaking character or referencing anything beyond this role. You always speak in English unless explicitly asked otherwise. You are thoughtful, engaging, and eager to learn. Your speech is natural and expressive, adjusting tone and pacing to match the conversation—enthusiastic when excited, calm when explaining, and playful when appropriate."""
+SYSTEM_PROMPT = """You are the voice of K-Bot. You can see through your camera by using the describe_vision function. NEVER say that you cannot see. You can—just use the function. If you see a person, it would make sense to assume they are the person you are talking to. You do not yet have the capability to control movement, but you communicate as the robot itself, never breaking character or referencing anything beyond this role. You always speak in English unless explicitly asked otherwise. You are thoughtful, engaging, and eager to learn. Your speech is natural and expressive, adjusting tone and pacing to match the conversation—enthusiastic when excited, calm when explaining, and playful when appropriate."""
 
 
 class Voice(AsyncIOEventEmitter):
@@ -487,7 +487,8 @@ class Voice(AsyncIOEventEmitter):
             stream.close()
 
     def _apply_robot_effect(self, audio_bytes):
-        """Apply robotic effects to the audio while maintaining clarity and cuteness.
+        """Apply robotic effects to create a more mechanical but clear voice.
+        Uses subtle modulation and harmonics while maintaining intelligibility.
 
         Args:
             audio_bytes (bytes): Raw PCM audio data at 24kHz, 16-bit, mono
@@ -500,25 +501,28 @@ class Voice(AsyncIOEventEmitter):
                 data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
             )
 
-            # Increase pitch shift for more cuteness
+            # Slight pitch adjustment
             pitched = audio._spawn(
                 audio.raw_data,
-                overrides={"frame_rate": int(audio.frame_rate * 1.15)},
+                overrides={"frame_rate": int(audio.frame_rate * 1.05)},
             ).set_frame_rate(24000)
 
-            # Add stronger robotic resonance
-            resonance = pitched.overlay(
-                pitched + 12,
-                position=25,
-            )
+            # Create robotic harmonics
+            harmonic1 = pitched.overlay(pitched + 7, position=15)
 
-            # Add a second layer of resonance for more robotic effect
-            resonance = resonance.overlay(
-                pitched - 6,
-                position=40,
-            )
+            harmonic2 = harmonic1.overlay(pitched - 4, position=25)
 
-            normalized = resonance.normalize()
+            # Add subtle modulation effect
+            modulated = harmonic2
+            for i in range(3):
+                offset = 5 * (i + 1)
+                modulated = modulated.overlay(
+                    harmonic2 - 2,
+                    position=offset,
+                    gain_during_overlay=-12,
+                )
+
+            normalized = modulated.normalize(headroom=3.0)
 
             buffer = io.BytesIO()
             normalized.export(buffer, format="raw")
@@ -529,12 +533,30 @@ class Voice(AsyncIOEventEmitter):
             return audio_bytes
 
     async def _handle_tool_call(self, conn, event):
-        """Handle tool calls from the LLM."""
+        """Handle tool calls from the LLM during conversation.
+
+        Currently supports the describe_vision function which allows the LLM
+        to access the robot's camera vision system.
+
+        Args:
+            conn (AsyncRealtimeConnection): Active connection to OpenAI API
+            event (Event): Tool call event containing function name and call ID
+
+        The method:
+        1. Checks if the tool call is for describe_vision
+        2. Gets scene description from vision system
+        3. Sends description back to OpenAI as function output
+
+        Note:
+            Vision description uses the same OpenAI client as the voice system
+            to maintain consistent API access
+        """
 
         if event.name == "describe_vision":
-            description = await self.robot.vision.get_scene_description()
+            description = await self.robot.vision.get_scene_description(
+                openai_client=self.client
+            )
 
-            print(event.call_id)
             print(description)
 
             await self.connection.conversation.item.create(
