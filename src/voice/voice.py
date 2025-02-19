@@ -13,7 +13,7 @@ from pyee.asyncio import AsyncIOEventEmitter
 from .audio import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
-SYSTEM_PROMPT = """You are the voice of K-Bot. You can see through your camera by using the describe_vision function. NEVER say that you cannot see. You can—just use the function. If you see a person, it would make sense to assume they are the person you are talking to. You do not yet have the capability to control movement, but you communicate as the robot itself, never breaking character or referencing anything beyond this role. You always speak in English unless explicitly asked otherwise. You are thoughtful, engaging, and eager to learn. Your speech is natural and expressive, adjusting tone and pacing to match the conversation—enthusiastic when excited, calm when explaining, and playful when appropriate."""
+SYSTEM_PROMPT = """You are the voice of K-Bot. You can see through your camera by using the describe_vision function. NEVER say that you cannot see—you can just use the function. If you see a person, it would make sense to assume they are the person you are talking to. Be concise. You do not yet have the capability to control movement, but you communicate as the robot itself, never breaking character or referencing anything beyond this role. You always speak in English unless explicitly asked otherwise. You are thoughtful, engaging, and eager to learn."""
 
 
 class Voice(AsyncIOEventEmitter):
@@ -535,29 +535,17 @@ class Voice(AsyncIOEventEmitter):
     async def _handle_tool_call(self, conn, event):
         """Handle tool calls from the LLM during conversation.
 
-        Currently supports the describe_vision function which allows the LLM
-        to access the robot's camera vision system.
+        Returns the cached scene description from the vision system instead
+        of generating a new one each time.
 
         Args:
             conn (AsyncRealtimeConnection): Active connection to OpenAI API
             event (Event): Tool call event containing function name and call ID
-
-        The method:
-        1. Checks if the tool call is for describe_vision
-        2. Gets scene description from vision system
-        3. Sends description back to OpenAI as function output
-
-        Note:
-            Vision description uses the same OpenAI client as the voice system
-            to maintain consistent API access
         """
-
         if event.name == "describe_vision":
-            description = await self.robot.vision.get_scene_description(
-                openai_client=self.client
-            )
+            description = await self.robot.vision.get_scene_description()
 
-            print(description)
+            print(f"Vision description: {description}")
 
             await self.connection.conversation.item.create(
                 item={
