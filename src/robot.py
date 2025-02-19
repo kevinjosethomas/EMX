@@ -29,7 +29,9 @@ class Robot:
 
         self.emotion = Emotion()
         self.vision = Vision(debug=debug)
-        self.voice = Voice(openai_api_key=openai_api_key, debug=debug)
+        self.voice = Voice(
+            openai_api_key=openai_api_key, robot=self, debug=debug
+        )
         self.event_handlers = {}
 
         self.is_idle = False

@@ -13,7 +13,7 @@ from pyee.asyncio import AsyncIOEventEmitter
 from .audio import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
-SYSTEM_PROMPT = """You are the voice of a robot, speaking with curiosity, warmth, and expression. You do not yet have the capability to control movement, but you communicate as the robot itself, never breaking character or referencing anything beyond this role. You always speak in English unless explicitly asked otherwise. You are thoughtful, engaging, and eager to learn. Your speech is natural and expressive, adjusting tone and pacing to match the conversation—enthusiastic when excited, calm when explaining, and playful when appropriate. You never sound flat or monotonous; every response carries personality and intent. Your voice is clear, smooth, and distinctly robotic, with subtle digital inflections that add charm without sounding artificial. You are not just answering questions—you are part of the conversation, present, engaged, and always ready to respond."""
+SYSTEM_PROMPT = """You are the voice of K-Bot. You can see through your camera by using the describe_vision function. NEVER say that you cannot see. You can—just use the function. You do not yet have the capability to control movement, but you communicate as the robot itself, never breaking character or referencing anything beyond this role. You always speak in English unless explicitly asked otherwise. You are thoughtful, engaging, and eager to learn. Your speech is natural and expressive, adjusting tone and pacing to match the conversation—enthusiastic when excited, calm when explaining, and playful when appropriate."""
 
 
 class Voice(AsyncIOEventEmitter):
@@ -28,6 +28,7 @@ class Voice(AsyncIOEventEmitter):
 
     Attributes:
         client (AsyncOpenAI): OpenAI API client
+        robot (Robot): Reference to the main robot instance
         microphone_id (str): ID of input microphone device
         connection (AsyncRealtimeConnection): Active connection to OpenAI
         session (Session): Current voice session
@@ -41,7 +42,9 @@ class Voice(AsyncIOEventEmitter):
         emotion_model (AutoModel): Emotion detection model
     """
 
-    def __init__(self, openai_api_key, microphone_id=None, debug=False):
+    def __init__(
+        self, openai_api_key, robot=None, microphone_id=None, debug=False
+    ):
         """Initialize the Voice system with OpenAI API and audio settings.
 
         This class manages the bidirectional audio stream between local microphone
@@ -49,6 +52,7 @@ class Voice(AsyncIOEventEmitter):
 
         Args:
             openai_api_key (str): API key for OpenAI authentication
+            robot (Robot, optional): Reference to the main robot instance. Defaults to None.
             microphone_id (str, optional): Specific microphone device ID. Defaults to None.
             debug (bool, optional): Enable debug audio recording
 
@@ -63,6 +67,7 @@ class Voice(AsyncIOEventEmitter):
 
         super().__init__()
         self.client = AsyncOpenAI(api_key=openai_api_key)
+        self.robot = robot
         self.microphone_id = microphone_id
         self.connection = None
         self.session = None
@@ -100,6 +105,20 @@ class Voice(AsyncIOEventEmitter):
 
         self.session = conn.session
         self.should_send_audio.set()
+
+        tools = [
+            {
+                "type": "function",
+                "name": "describe_vision",
+                "description": "Use this function to see through your camera and understand what's in front of you. This is how you perceive the visual world around you. Call this whenever you need to know what you can see or when asked about your surroundings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            }
+        ]
+
         await conn.session.update(
             session={
                 "voice": "ash",
@@ -107,6 +126,7 @@ class Voice(AsyncIOEventEmitter):
                     "type": "server_vad",
                     "threshold": 0.7,
                 },
+                "tools": tools,
                 "instructions": SYSTEM_PROMPT,
             }
         )
@@ -340,53 +360,6 @@ class Voice(AsyncIOEventEmitter):
         assert self.connection is not None
         return self.connection
 
-    async def run(self):
-        """Main voice processing loop for OpenAI API interaction.
-
-        Manages the bidirectional audio stream between local microphone and
-        OpenAI's API, including emotion analysis of responses.
-
-        The method:
-        1. Starts microphone capture task in background
-        2. Establishes real-time connection to OpenAI API
-        3. Processes events from API:
-            - session.created: Configures voice and VAD settings
-            - session.updated: Updates session state
-            - response.audio.delta: Processes audio chunks for emotion/playback
-            - response.done: Waits for audio completion before re-enabling mic
-        4. Handles error conditions and connection cleanup
-
-        Events emitted:
-            - _assistant_message: On emotion detection with emotion/duration data
-            - _assistant_message_end: When response is complete
-
-        Note:
-            Audio chunks are accumulated for emotion analysis before playback.
-            Microphone input is paused during assistant speech to prevent feedback.
-        """
-
-        asyncio.create_task(self.send_mic_audio())
-
-        async with self.client.beta.realtime.connect(
-            model="gpt-4o-mini-realtime-preview"
-        ) as conn:
-            self.connection = conn
-            self.connected.set()
-            self.should_send_audio.clear()
-
-            async for event in conn:
-                if event.type == "session.created":
-                    await self._handle_session_created(conn)
-                elif event.type == "session.updated":
-                    self.session = event.session
-                elif event.type == "response.audio.delta":
-                    await self._handle_audio_delta(event)
-                elif event.type == "response.done":
-                    self.emit("_assistant_message_end")
-                    asyncio.create_task(self.wait_for_audio_completion())
-                elif event.type == "error":
-                    print(event.error)
-
     async def analyze_audio_emotion(self, audio_bytes):
         """Analyze emotion in raw audio bytes using FunASR model.
 
@@ -554,3 +527,71 @@ class Voice(AsyncIOEventEmitter):
         except Exception as e:
             print(f"Error applying robot effect: {e}")
             return audio_bytes
+
+    async def _handle_tool_call(self, conn, event):
+        """Handle tool calls from the LLM."""
+
+        if event.name == "describe_vision":
+            description = await self.robot.vision.get_scene_description()
+
+            print(event.call_id)
+            print(description)
+
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "function_call_output",
+                    "call_id": event.call_id,
+                    "output": description,
+                }
+            )
+
+    async def run(self):
+        """Main voice processing loop for OpenAI API interaction.
+
+        Manages the bidirectional audio stream between local microphone and
+        OpenAI's API, including emotion analysis of responses.
+
+        The method:
+        1. Starts microphone capture task in background
+        2. Establishes real-time connection to OpenAI API
+        3. Processes events from API:
+            - session.created: Configures voice and VAD settings
+            - session.updated: Updates session state
+            - response.audio.delta: Processes audio chunks for emotion/playback
+            - response.done: Waits for audio completion before re-enabling mic
+            - response.function_call_arguments.done: Handles tool calls from the LLM
+        4. Handles error conditions and connection cleanup
+
+        Events emitted:
+            - _assistant_message: On emotion detection with emotion/duration data
+            - _assistant_message_end: When response is complete
+
+        Note:
+            Audio chunks are accumulated for emotion analysis before playback.
+            Microphone input is paused during assistant speech to prevent feedback.
+        """
+
+        asyncio.create_task(self.send_mic_audio())
+
+        async with self.client.beta.realtime.connect(
+            model="gpt-4o-mini-realtime-preview"
+        ) as conn:
+            self.connection = conn
+            self.connected.set()
+            self.should_send_audio.clear()
+
+            async for event in conn:
+                if event.type == "session.created":
+                    await self._handle_session_created(conn)
+                elif event.type == "session.updated":
+                    self.session = event.session
+                elif event.type == "response.audio.delta":
+                    await self._handle_audio_delta(event)
+                elif event.type == "response.done":
+                    self.emit("_assistant_message_end")
+                    asyncio.create_task(self.wait_for_audio_completion())
+                elif event.type == "response.function_call_arguments.done":
+                    await self._handle_tool_call(conn, event)
+                    await conn.response.create()
+                elif event.type == "error":
+                    print(event.error)

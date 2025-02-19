@@ -1,8 +1,10 @@
 import cv2
+import time
 import asyncio
 from pyee.asyncio import AsyncIOEventEmitter
 from .face_detector import FaceDetector
 from .gesture_detector import GestureDetector
+from .scene_descriptor import SceneDescriptor
 
 
 class Vision(AsyncIOEventEmitter):
@@ -22,6 +24,10 @@ class Vision(AsyncIOEventEmitter):
         self.face_detector = FaceDetector(debug=debug)
         self.gesture_detector = GestureDetector()
         self.detectors.extend([self.face_detector, self.gesture_detector])
+
+        self.scene_descriptor = SceneDescriptor()
+        self.last_description_time = 0
+        self.description_cooldown = 1.0
 
         def forward_event(event_name, data=None):
             if data is None:
@@ -106,3 +112,34 @@ class Vision(AsyncIOEventEmitter):
             await asyncio.sleep(0.01)
 
         await self.cleanup()
+
+    async def get_scene_description(self):
+        """Get a description of the current camera frame.
+
+        Returns:
+            str: Detailed description of what the robot can see
+
+        Note:
+            Includes a cooldown to prevent excessive processing
+        """
+        current_time = time.time()
+        if (
+            current_time - self.last_description_time
+            < self.description_cooldown
+        ):
+            return None
+
+        if not self.cap or not self.running:
+            return "I cannot see anything right now as my vision system is not active."
+
+        ret, frame = self.cap.read()
+        if not ret:
+            return "I'm having trouble getting an image from my camera."
+
+        frame = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        description = self.scene_descriptor.describe_frame(rgb_frame)
+        self.last_description_time = current_time
+
+        return description
