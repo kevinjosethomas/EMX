@@ -189,8 +189,8 @@ class Voice(AsyncIOEventEmitter):
             await self._analyze_emotion_buffer()
             self._reset_emotion_buffer()
 
-        processed_audio = self._apply_robot_effect(audio_bytes)
-        self.audio_player.add_data(processed_audio)
+        # processed_audio = self._apply_robot_effect(audio_bytes)
+        self.audio_player.add_data(audio_bytes)
 
     async def _analyze_emotion_buffer(self):
         """Analyze emotion in accumulated audio buffer and emit results.
