@@ -1,11 +1,12 @@
 import cv2
 import time
 import asyncio
-from pyee.asyncio import AsyncIOEventEmitter
+from typing import Optional
+from openai import AsyncOpenAI
 from .face_detector import FaceDetector
+from pyee.asyncio import AsyncIOEventEmitter
 from .gesture_detector import GestureDetector
 from .scene_descriptor import SceneDescriptor
-from typing import Optional
 
 
 class Vision(AsyncIOEventEmitter):
@@ -15,7 +16,7 @@ class Vision(AsyncIOEventEmitter):
     Aggregates and relays events from individual detectors.
     """
 
-    def __init__(self, camera_id=2, debug=False):
+    def __init__(self, camera_id=2, debug=False, openai_api_key=None):
         super().__init__()
         self.camera_id = camera_id
         self.cap = None
@@ -25,6 +26,7 @@ class Vision(AsyncIOEventEmitter):
         self.face_detector = FaceDetector(debug=debug)
         self.gesture_detector = GestureDetector()
         self.detectors.extend([self.face_detector, self.gesture_detector])
+        self.openai_client = AsyncOpenAI(api_key=openai_api_key)
 
         self.scene_descriptor = SceneDescriptor(use_local_model=False)
         self.current_scene_description: Optional[str] = None
@@ -147,7 +149,7 @@ class Vision(AsyncIOEventEmitter):
                     await asyncio.sleep(0)
 
                     description = await self.scene_descriptor.describe_frame(
-                        rgb_frame
+                        rgb_frame, openai_client=self.openai_client
                     )
                     if description:
                         self.current_scene_description = description

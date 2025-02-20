@@ -34,7 +34,7 @@ class FaceDetector(BaseDetector):
         """
 
         self.face_detection = mp.solutions.face_detection.FaceDetection(
-            min_detection_confidence=self.min_detection_confidence
+            min_detection_confidence=self.min_detection_confidence,
         )
 
     async def cleanup(self):

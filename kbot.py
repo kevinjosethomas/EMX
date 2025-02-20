@@ -18,14 +18,22 @@ async def on_ready():
     # await robot.voice.speak("Hello, I am ready to assist you.")
 
 
-@robot.event("face_appeared")
-async def on_face_appeared():
-    await robot.emotion.queue_animation(Love(scale=1.2, duration=1.0))
+# @robot.event("face_appeared")
+# async def on_face_appeared():
+#     await robot.emotion.queue_animation(Love(scale=1.2, duration=1.0))
 
 
-@robot.event("face_disappeared")
-async def on_face_disappeared():
-    await robot.emotion.queue_animation(Sad(scale=0.8, duration=1.0))
+# @robot.event("face_disappeared")
+# async def on_face_disappeared():
+#     await robot.emotion.queue_animation(Sad(scale=0.8, duration=1.0))
+
+
+# @robot.event("face_tracked")
+# async def on_face_tracked(face_data):
+#     print(face_data)
+#     robot.emotion.queue_animation(
+#         Neutral(position=(face_data["x"], face_data["y"])), force=True
+#     )
 
 
 # @robot.event("face_tracked")
