@@ -545,8 +545,6 @@ class Voice(AsyncIOEventEmitter):
         if event.name == "describe_vision":
             description = await self.robot.vision.get_scene_description()
 
-            print(f"Vision description: {description}")
-
             await self.connection.conversation.item.create(
                 item={
                     "type": "function_call_output",

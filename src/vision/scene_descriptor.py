@@ -1,3 +1,7 @@
+import os
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import torch
 import base64
 from PIL import Image
@@ -65,8 +69,6 @@ class SceneDescriptor:
     def _process_local_frame(self, image):
         """Process frame using local Florence model (runs in executor)."""
 
-        start_time = time.time()
-
         prompt = "<MORE_DETAILED_CAPTION>"
         inputs = self.processor(
             text=prompt, images=image, return_tensors="pt"
@@ -89,9 +91,6 @@ class SceneDescriptor:
             task=prompt,
             image_size=(image.width, image.height),
         )
-
-        inference_time = time.time() - start_time
-        print(f"Inference took {inference_time:.2f} seconds")
 
         return description["<MORE_DETAILED_CAPTION>"]
 

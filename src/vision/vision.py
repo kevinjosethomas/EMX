@@ -26,7 +26,7 @@ class Vision(AsyncIOEventEmitter):
         self.gesture_detector = GestureDetector()
         self.detectors.extend([self.face_detector, self.gesture_detector])
 
-        self.scene_descriptor = SceneDescriptor(use_local_model=True)
+        self.scene_descriptor = SceneDescriptor(use_local_model=False)
         self.current_scene_description: Optional[str] = None
         self.last_description_time = 0
         self.description_update_interval = 0
@@ -152,9 +152,6 @@ class Vision(AsyncIOEventEmitter):
                     if description:
                         self.current_scene_description = description
                         self.last_description_time = current_time
-                        print(
-                            f"Updated scene description: {description[:100]}..."
-                        )
 
                 await asyncio.sleep(0.5)
 
