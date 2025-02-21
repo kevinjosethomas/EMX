@@ -23,7 +23,7 @@ class Vision(AsyncIOEventEmitter):
         self.detectors = []
         self.running = False
 
-        self.face_detector = FaceDetector(debug=debug)
+        self.face_detector = FaceDetector(debug=False)
         self.gesture_detector = GestureDetector()
         self.detectors.extend([self.face_detector, self.gesture_detector])
         self.openai_client = AsyncOpenAI(api_key=openai_api_key)

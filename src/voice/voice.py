@@ -84,6 +84,8 @@ class Voice(AsyncIOEventEmitter):
         self.debug = debug
         self.debug_mic_buffer = io.BytesIO() if debug else None
 
+        print("Initializing Voice")
+
         if debug:
             os.makedirs("debug_audio", exist_ok=True)
             os.makedirs("debug_audio/input", exist_ok=True)
@@ -387,6 +389,7 @@ class Voice(AsyncIOEventEmitter):
         """
 
         try:
+            print("Analyzing emotion")
 
             audio = AudioSegment(
                 data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
@@ -581,6 +584,8 @@ class Voice(AsyncIOEventEmitter):
 
         asyncio.create_task(self.send_mic_audio())
 
+        print("Connecting to OpenAI")
+
         async with self.client.beta.realtime.connect(
             model="gpt-4o-mini-realtime-preview"
         ) as conn:
@@ -588,14 +593,19 @@ class Voice(AsyncIOEventEmitter):
             self.connected.set()
             self.should_send_audio.clear()
 
+            print("Connected to OpenAI")
+
             async for event in conn:
                 if event.type == "session.created":
+                    print("Session created")
                     await self._handle_session_created(conn)
                 elif event.type == "session.updated":
                     self.session = event.session
                 elif event.type == "response.audio.delta":
+                    print("Audio delta")
                     await self._handle_audio_delta(event)
                 elif event.type == "response.done":
+                    print("Response done")
                     self.emit("_assistant_message_end")
                     asyncio.create_task(self.wait_for_audio_completion())
                 elif event.type == "response.function_call_arguments.done":
