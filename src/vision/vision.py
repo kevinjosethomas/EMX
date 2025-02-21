@@ -40,7 +40,7 @@ class Vision(AsyncIOEventEmitter):
                 self.emit(event_name, data)
 
         self.face_detector.on(
-            "face_appeared", lambda: forward_event("face_appeared")
+            "face_appeared", lambda data: forward_event("face_appeared", data)
         )
         self.face_detector.on(
             "face_disappeared", lambda: forward_event("face_disappeared")

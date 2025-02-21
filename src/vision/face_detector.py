@@ -61,9 +61,6 @@ class FaceDetector(BaseDetector):
         results = self.face_detection.process(frame)
 
         if results.detections:
-            if not self.face_present:
-                self.emit("face_appeared")
-                self.face_present = True
 
             detection = results.detections[0]
             bbox = detection.location_data.relative_bounding_box
@@ -72,6 +69,10 @@ class FaceDetector(BaseDetector):
                 "y": bbox.ymin + bbox.height / 2,
                 "size": bbox.width * bbox.height,
             }
+
+            if not self.face_present:
+                self.emit("face_appeared", face_data)
+                self.face_present = True
 
             if self.debug:
                 self.mp_drawing.draw_detection(frame, detection)

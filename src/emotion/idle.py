@@ -60,7 +60,6 @@ class IdleAnimationManager:
                                 position=loc,
                             )
                         )
-
                 else:
                     next_expression = Blink(
                         duration=0.05,

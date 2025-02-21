@@ -59,8 +59,8 @@ Currently, the following expressions are built-in: neutral, happy, love, scared,
 The vision engine processes camera input to detect faces, facial landmarks, and gestures using Google MediaPipe. It emits the following events:
 
 - `face_appeared(face)` - when a face is first detected
-- `face_disappeared(face)` - when a face is no longer detected
-- `face_tracked(gesture)` - continuous face position updates
+- `face_tracked(face)` - continuous face position updates
+- `face_disappeared()` - when a face is no longer detected
 
 ## 🗯️ Voice Engine
 

@@ -89,7 +89,6 @@ class Emotion(AsyncIOEventEmitter):
                 Defaults to False.
         """
         if force:
-            # Clear the queue
             while not self.expression_queue.empty():
                 self.expression_queue.get_nowait()
 
@@ -140,10 +139,8 @@ class Emotion(AsyncIOEventEmitter):
                 next_expr = await self.expression_queue.get()
 
                 if next_expr:
-                    # First emit completion for current expression
                     self.emit("expression_completed", self.current_expression)
 
-                    # Set up transition
                     self.previous_vertices = self.current_expression.render(
                         1.0,
                         self.interpolation_func,
@@ -161,7 +158,6 @@ class Emotion(AsyncIOEventEmitter):
                     self.is_transitioning = True
                     self.start_time = time.perf_counter()
 
-                    # Now emit started for new expression
                     self.emit("expression_started", next_expr)
 
             await asyncio.sleep(0.01)
