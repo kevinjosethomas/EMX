@@ -79,7 +79,15 @@ class Voice(AsyncIOEventEmitter):
         self.emotion_buffer = io.BytesIO()
         self.emotion_chunk_size = 5
         self.chunk_counter = 0
-        self.emotion_model = AutoModel(model="iic/emotion2vec_plus_base")
+
+        model_path = "iic/emotion2vec_plus_base"
+        self.emotion_model = AutoModel(
+            model=model_path,
+            model_revision="v1.0",
+            device="cpu",
+            offline=True,
+            use_cache=True,
+        )
 
         self.debug = debug
         self.debug_mic_buffer = io.BytesIO() if debug else None
@@ -412,7 +420,7 @@ class Voice(AsyncIOEventEmitter):
 
     async def send_mic_audio(self) -> None:
         """Capture and stream microphone audio to OpenAI's API.
-        
+
         This method:
         1. Initializes a real-time audio input stream with the device's default sample rate.
         2. Continuously captures audio chunks.
@@ -426,7 +434,9 @@ class Voice(AsyncIOEventEmitter):
         device_info = sd.query_devices(device, "input")
         actual_input_sr = int(device_info["default_samplerate"])
         self.input_sample_rate = actual_input_sr
-        print(f"Using input sample rate {actual_input_sr} instead of {SAMPLE_RATE}")
+        print(
+            f"Using input sample rate {actual_input_sr} instead of {SAMPLE_RATE}"
+        )
         read_size = int(actual_input_sr * 0.02)
 
         if self.debug:
