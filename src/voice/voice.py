@@ -87,7 +87,7 @@ class Voice(AsyncIOEventEmitter):
             device="cpu",
             offline=True,
             use_cache=True,
-            auto_update=False,
+            disable_update=True,
         )
 
         self.debug = debug
