@@ -429,7 +429,7 @@ class Voice(AsyncIOEventEmitter):
         """
 
         sent_audio = False
-        read_size = int(SAMPLE_RATE * 0.1)
+        read_size = int(SAMPLE_RATE * 0.02)
 
         if self.debug:
             self.debug_mic_buffer = io.BytesIO()
@@ -438,52 +438,24 @@ class Voice(AsyncIOEventEmitter):
             channels=CHANNELS,
             samplerate=SAMPLE_RATE,
             dtype="int16",
-            blocksize=read_size,
-            latency="low",
         )
         stream.start()
 
         try:
             while True:
-                await asyncio.sleep(0.05)
+                await self.should_send_audio.wait()
 
-                if not self.should_send_audio.is_set():
-                    if self.debug and sent_audio:
-                        try:
-                            filename = self._get_timestamp_filename("input")
+                data, _ = stream.read(read_size)
+                connection = await self._get_connection()
+                if not sent_audio:
+                    await connection.send({"type": "response.cancel"})
+                    sent_audio = True
 
-                            if self.debug_mic_buffer.getvalue():
-                                audio = AudioSegment(
-                                    data=self.debug_mic_buffer.getvalue(),
-                                    sample_width=2,
-                                    frame_rate=24000,
-                                    channels=1,
-                                )
-                                audio.export(filename, format="wav")
-                                print(f"Saved input audio: {filename}")
-
-                            self.debug_mic_buffer = io.BytesIO()
-                            sent_audio = False
-                        except Exception as e:
-                            print(f"Error saving debug audio: {e}")
-                    continue
-
-                if stream.read_available >= read_size:
-                    data, _ = stream.read(read_size)
-
-                    if self.debug:
-                        self.debug_mic_buffer.write(data.tobytes())
-
-                    connection = await self._get_connection()
-
-                    if not sent_audio:
-                        await connection.send({"type": "response.cancel"})
-                        sent_audio = True
-
-                    audio_b64 = base64.b64encode(cast(Any, data)).decode(
-                        "utf-8"
-                    )
-                    await connection.input_audio_buffer.append(audio=audio_b64)
+                audio_b64 = base64.b64encode(cast(Any, data)).decode(
+                    "utf-8"
+                )
+                await connection.input_audio_buffer.append(audio=audio_b64)
+                await asyncio.sleep(0)
 
         finally:
             stream.stop()
