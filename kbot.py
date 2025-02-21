@@ -9,6 +9,7 @@ dotenv.load_dotenv()
 robot = Robot(
     openai_api_key=os.getenv("OPENAI_API_KEY"),
     debug=False,
+    full_screen=True,
 )
 
 

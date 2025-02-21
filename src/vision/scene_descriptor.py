@@ -6,7 +6,7 @@ import torch
 import base64
 from PIL import Image
 from io import BytesIO
-from transformers import AutoProcessor, AutoModelForCausalLM
+# from transformers import AutoProcessor, AutoModelForCausalLM
 import numpy as cv2
 import asyncio
 import time
@@ -22,23 +22,23 @@ class SceneDescriptor:
         """Initialize the scene descriptor with either local or OpenAI model."""
 
         self.use_local_model = use_local_model
-        if use_local_model:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.torch_dtype = (
-                torch.float16 if torch.cuda.is_available() else torch.float32
-            )
+        # if use_local_model:
+        #     self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        #     self.torch_dtype = (
+        #         torch.float16 if torch.cuda.is_available() else torch.float32
+        #     )
 
-            self.processor = AutoProcessor.from_pretrained(
-                "microsoft/Florence-2-base",
-                trust_remote_code=True,
-            )
-            self.model = AutoModelForCausalLM.from_pretrained(
-                "microsoft/Florence-2-base",
-                trust_remote_code=True,
-                torch_dtype=self.torch_dtype,
-            )
+        #     self.processor = AutoProcessor.from_pretrained(
+        #         "microsoft/Florence-2-base",
+        #         trust_remote_code=True,
+        #     )
+        #     self.model = AutoModelForCausalLM.from_pretrained(
+        #         "microsoft/Florence-2-base",
+        #         trust_remote_code=True,
+        #         torch_dtype=self.torch_dtype,
+        #     )
 
-            self.model = self.model.to(self.device)
+        #     self.model = self.model.to(self.device)
 
     def _encode_image(self, image):
         """Convert PIL Image to base64 string."""
