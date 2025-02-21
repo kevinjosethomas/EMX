@@ -41,15 +41,48 @@ class AudioPlayerAsync:
     def __init__(self):
         self.queue = []
         self.lock = threading.Lock()
-        self.stream = sd.OutputStream(
-            callback=self.callback,
-            samplerate=SAMPLE_RATE,
-            channels=CHANNELS,
-            dtype=np.int16,
-            blocksize=int(CHUNK_LENGTH_S * SAMPLE_RATE),
-        )
-        self.playing = False
-        self._frame_count = 0
+        
+        # Query available devices
+        devices = sd.query_devices()
+        print("Available audio devices:")
+        print(devices)
+        
+        # Try to find a valid default output device
+        try:
+            default_device = sd.query_devices(kind='output')
+            device_id = default_device['index']
+            print(f"Using output device: {default_device['name']}")
+            
+            # Get supported sample rates
+            supported_rates = default_device.get('default_samplerate')
+            print(f"Device default sample rate: {supported_rates}")
+            
+            # Use device's default sample rate if 24000 isn't supported
+            sample_rate = SAMPLE_RATE
+            if supported_rates and supported_rates != SAMPLE_RATE:
+                print(f"Using device sample rate {supported_rates} instead of {SAMPLE_RATE}")
+                sample_rate = int(supported_rates)
+        except Exception as e:
+            print(f"Warning: Error querying output device: {e}")
+            device_id = None
+            sample_rate = SAMPLE_RATE
+
+        try:
+            self.stream = sd.OutputStream(
+                device=device_id,
+                callback=self.callback,
+                samplerate=sample_rate,
+                channels=CHANNELS,
+                dtype=np.int16,
+                blocksize=int(CHUNK_LENGTH_S * sample_rate),
+            )
+            self.playing = False
+            self._frame_count = 0
+        except Exception as e:
+            print(f"Warning: Could not initialize audio output: {e}")
+            self.stream = None
+            self.playing = False
+            self._frame_count = 0
 
     def callback(self, outdata, frames, time, status):  # noqa
         with self.lock:
@@ -80,25 +113,32 @@ class AudioPlayerAsync:
         return self._frame_count
 
     def add_data(self, data: bytes):
+        if self.stream is None:
+            return
         with self.lock:
-            # bytes is pcm16 single channel audio data, convert to numpy array
             np_data = np.frombuffer(data, dtype=np.int16)
             self.queue.append(np_data)
             if not self.playing:
                 self.start()
 
     def start(self):
+        if self.stream is None:
+            print("Warning: Audio output not available")
+            return
         self.playing = True
         self.stream.start()
 
     def stop(self):
+        if self.stream is None:
+            return
         self.playing = False
         self.stream.stop()
         with self.lock:
             self.queue = []
 
     def terminate(self):
-        self.stream.close()
+        if self.stream is not None:
+            self.stream.close()
 
 
 async def send_audio_worker_sounddevice(

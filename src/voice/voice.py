@@ -412,31 +412,30 @@ class Voice(AsyncIOEventEmitter):
 
     async def send_mic_audio(self) -> None:
         """Capture and stream microphone audio to OpenAI's API.
-
+        
         This method:
-        1. Initializes a real-time audio input stream
-        2. Continuously captures audio chunks when enabled
-        3. Sends chunks to OpenAI's API for processing
-        4. Manages the session state including canceling existing responses
-           when new audio input begins
-
-        The audio capture is controlled by the should_send_audio event,
-        allowing other parts of the system to pause/resume the microphone
-        input as needed.
-
-        Audio is captured in chunks of 0.1 seconds using the configured
-        sample rate and format settings.
+        1. Initializes a real-time audio input stream with the device's default sample rate.
+        2. Continuously captures audio chunks.
+        3. Resamples the audio to 24000 Hz if the input device uses a different rate.
+        4. Sends chunks to OpenAI's API for processing.
+        5. Manages the session state including canceling existing responses
+           when new audio input begins.
         """
-
         sent_audio = False
-        read_size = int(SAMPLE_RATE * 0.02)
+        device = self.microphone_id if self.microphone_id is not None else None
+        device_info = sd.query_devices(device, "input")
+        actual_input_sr = int(device_info["default_samplerate"])
+        self.input_sample_rate = actual_input_sr
+        print(f"Using input sample rate {actual_input_sr} instead of {SAMPLE_RATE}")
+        read_size = int(actual_input_sr * 0.02)
 
         if self.debug:
             self.debug_mic_buffer = io.BytesIO()
 
         stream = sd.InputStream(
+            device=device,
             channels=CHANNELS,
-            samplerate=SAMPLE_RATE,
+            samplerate=actual_input_sr,
             dtype="int16",
         )
         stream.start()
@@ -444,16 +443,25 @@ class Voice(AsyncIOEventEmitter):
         try:
             while True:
                 await self.should_send_audio.wait()
-
                 data, _ = stream.read(read_size)
+                raw_bytes = data.tobytes()
+                if self.input_sample_rate != 24000:
+                    segment = AudioSegment(
+                        data=raw_bytes,
+                        sample_width=2,
+                        frame_rate=self.input_sample_rate,
+                        channels=CHANNELS,
+                    ).set_frame_rate(24000)
+                    audio_bytes = segment.raw_data
+                else:
+                    audio_bytes = raw_bytes
+
                 connection = await self._get_connection()
                 if not sent_audio:
                     await connection.send({"type": "response.cancel"})
                     sent_audio = True
 
-                audio_b64 = base64.b64encode(cast(Any, data)).decode(
-                    "utf-8"
-                )
+                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 await connection.input_audio_buffer.append(audio=audio_b64)
                 await asyncio.sleep(0)
 
