@@ -24,13 +24,26 @@ class Robot:
     wire up handlers to vision, emotion, and voice subsystems.
     """
 
-    def __init__(self, openai_api_key, debug=False, fullscreen=False):
-        """Initialize robot with vision and emotion engines."""
+    def __init__(self, openai_api_key, debug=False, fullscreen=False, environment="default"):
+        """Initialize robot with vision and emotion engines.
+        
+        Args:
+            openai_api_key (str): OpenAI API key for voice/vision
+            debug (bool): Enable debug mode
+            fullscreen (bool): Run in fullscreen mode
+            environment (str): Type of camera implementation ("default", "pi")
+        """
 
         self.emotion = Emotion(fullscreen=fullscreen)
-        self.vision = Vision(debug=debug, openai_api_key=openai_api_key)
+        self.vision = Vision(
+            debug=debug, 
+            openai_api_key=openai_api_key,
+            environment=environment
+        )
         self.voice = Voice(
-            openai_api_key=openai_api_key, robot=self, debug=debug
+            openai_api_key=openai_api_key, 
+            robot=self, 
+            debug=debug
         )
         self.event_handlers = {}
 

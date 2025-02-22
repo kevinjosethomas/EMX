@@ -16,9 +16,11 @@ class Vision(AsyncIOEventEmitter):
     Aggregates and relays events from individual detectors.
     """
 
-    def __init__(self, camera_id=2, debug=False, openai_api_key=None):
+    def __init__(self, camera_id=2, debug=False, openai_api_key=None, environment="default"):
         super().__init__()
         self.camera_id = camera_id
+        self.debug = debug
+        self.environment = environment
         self.cap = None
         self.detectors = []
         self.running = False
@@ -65,7 +67,11 @@ class Vision(AsyncIOEventEmitter):
             Exception: If detector initialization fails
         """
 
+
         self.cap = cv2.VideoCapture(self.camera_id)
+        if not self.cap.isOpened():
+            raise RuntimeError(f"Could not open camera {self.camera_id}")
+
         for detector in self.detectors:
             await detector.setup()
 

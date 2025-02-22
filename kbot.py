@@ -1,15 +1,18 @@
 import os
-import asyncio
 import dotenv
+import asyncio
 from src.robot import Robot
 from src.emotion.expressions import Love, Neutral, Sad, Happy
 
 dotenv.load_dotenv()
 
+ENVIRONMENT = os.getenv("ENVIRONMENT", "default")
+
 robot = Robot(
     openai_api_key=os.getenv("OPENAI_API_KEY"),
     debug=False,
     fullscreen=False,
+    environment=ENVIRONMENT
 )
 
 

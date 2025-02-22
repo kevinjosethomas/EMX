@@ -83,7 +83,7 @@ It emits the following events:
 
 # Installation
 
-First, clone the repository and install the dependencies:
+First, download **Python 3.10.5**. Then, clone the repository and install the dependencies:
 
 ```
 # Clone the repository
@@ -91,13 +91,25 @@ git clone https://github.com/kevinjosethomas/EMX.git
 cd EMX
 
 # Create virtual environment
-python -m venv venv
+python -m venv --system-site-packages venv
 source venv/bin/activate  # Linux/Mac
 # or
 .\venv\Scripts\activate  # Windows
 
 # Install dependencies
 python3 -m pip install -r requirements.txt
+```
+
+For Linux/Raspberry PI, you will need to download ``pyaudio`` separately:
+
+```
+sudo apt-get update
+sudo apt-get install portaudio19-dev
+python3 -m pip install pyaudio
+```
+
+If you already have a virtual environment, without system site packages, you can provide the `--system-site-packages` flag to the virtual environment command:
+```
 ```
 
 Create a `.env` file in the root directory with the following content:
