@@ -41,7 +41,7 @@ class AudioPlayerAsync:
     def __init__(self):
         self.queue = []
         self.lock = threading.Lock()
-        self.volume = 0.1
+        self.volume = 0.15
 
         # Query available devices
         devices = sd.query_devices()

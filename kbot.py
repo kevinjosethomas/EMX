@@ -2,7 +2,7 @@ import os
 import dotenv
 import asyncio
 from src.robot import Robot
-from src.emotion.expressions import Love, Neutral, Sad, Happy
+from src.emotion.expressions import Neutral, Happy
 
 dotenv.load_dotenv()
 
@@ -14,7 +14,6 @@ robot = Robot(
     fullscreen=False,
     environment=ENVIRONMENT
 )
-
 
 @robot.event("ready")
 async def on_ready():

@@ -75,10 +75,21 @@ class FaceDetector(BaseDetector):
                 self.face_present = True
 
             if self.debug:
-                self.mp_drawing.draw_detection(frame, detection)
+                debug_frame = frame.copy()
+                self.mp_drawing.draw_detection(debug_frame, detection)
+                height, width = debug_frame.shape[:2]
+                max_height = 600
+                max_width = 1024
+                
+                if height > max_height or width > max_width:
+                    scale = min(max_height/height, max_width/width)
+                    new_width = int(width * scale)
+                    new_height = int(height * scale)
+                    debug_frame = cv2.resize(debug_frame, (new_width, new_height))
+
                 cv2.imshow(
                     "Face Detection Debug",
-                    cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                    cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR),
                 )
 
                 cv2.waitKey(1)

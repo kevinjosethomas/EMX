@@ -48,7 +48,7 @@ class Voice(AsyncIOEventEmitter):
         robot=None,
         microphone_id=None,
         debug=False,
-        volume=0.1,
+        volume=0.15,
     ):
         """Initialize the Voice system with OpenAI API and audio settings.
 

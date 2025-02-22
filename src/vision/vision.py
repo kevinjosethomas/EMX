@@ -18,7 +18,7 @@ class Vision(AsyncIOEventEmitter):
 
     def __init__(
         self,
-        camera_id=2,
+        camera_id="2",
         debug=False,
         openai_api_key=None,
         environment="default",
@@ -73,7 +73,11 @@ class Vision(AsyncIOEventEmitter):
             Exception: If detector initialization fails
         """
 
-        self.cap = cv2.VideoCapture(self.camera_id)
+        if self.environment == "pi":
+            self.cap = cv2.VideoCapture("/dev/video45")
+        else:
+            self.cap = cv2.VideoCapture(self.camera_id)
+
         if not self.cap.isOpened():
             raise RuntimeError(f"Could not open camera {self.camera_id}")
 
