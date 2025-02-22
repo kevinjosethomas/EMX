@@ -100,7 +100,7 @@ source venv/bin/activate  # Linux/Mac
 python3 -m pip install -r requirements.txt
 ```
 
-For Linux/Raspberry PI, you will need to download ``pyaudio`` separately:
+For Linux/Raspberry Pi, you will need to download ``pyaudio`` separately:
 
 ```
 sudo apt-get update
@@ -108,15 +108,40 @@ sudo apt-get install portaudio19-dev
 python3 -m pip install pyaudio
 ```
 
-If you already have a virtual environment, without system site packages, you can provide the `--system-site-packages` flag to the virtual environment command:
-```
-```
-
 Create a `.env` file in the root directory with the following content:
 
 ```env
 # OpenAI Credentials
 OPENAI_API_KEY=your_api_key_string
+```
+
+If you're on a Raspberry Pi, you should also do the following:
+###  Allow Streaming of Cameras
+```
+# Download the v4l2loopback package
+sudo apt-get install -y v4l2loopback-dkms
+```
+
+Add the following to `/etc/modules-load.d/v4l2loopback.conf`:
+```
+v4l2loopback
+```
+
+Add the following to `/etc/modprobe.d/v4l2loopback.conf`:
+```
+options v4l2loopback video_nr=45,46
+```
+
+And add the following to `.config/openbox/autostart.sh`:
+```
+# Start the cameras on boot
+gst-launch-1.0 libcamerasrc camera_name=/base/axi/pcie@120000/rp1/i2c@88000/ov5647@36 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=/dev/video45 >/dev/null &
+gst-launch-1.0 libcamerasrc camera_name=/base/axi/pcie@120000/rp1/i2c@80000/ov5647@36 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=/dev/video46 >/dev/null &
+
+# Ensure the display doesn't sleep on boot
+xset -dpms     # Disable DPMS (Energy Star) features
+xset s off     # Disable screensaver
+xset s noblank # Don't blank video device
 ```
 
 Develop a basic script using the robot API as shown above, and run it:
