@@ -150,13 +150,22 @@ class Voice(AsyncIOEventEmitter):
                 },
             },
             {
-            "type": "function",
-            "name": "toggle_camera_view",
-            "description": "Toggle between showing the robot's camera feeds and its normal face display",
-            "parameters": {
-                "type": "object",
-                "properties": {}
-            }
+                "type": "function",
+                "name": "toggle_camera_view",
+                "description": "Toggle between showing the robot's camera feeds and its normal face display",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "type": "function",
+                "name": "get_current_time",
+                "description": "Get the current time of the day. K-Scale AI day goes from 3pm to 8pm.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
         ]
 
@@ -628,6 +637,15 @@ class Voice(AsyncIOEventEmitter):
                     "type": "function_call_output",
                     "call_id": event.call_id,
                     "output": f"Camera view is now {state}. You can now {'see through my eyes' if state == 'on' else 'see my face again'}."
+                }
+            )
+        elif event.name == "get_current_time":
+            current_time = time.strftime("%I:%M %p")
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "function_call_output",
+                    "call_id": event.call_id,
+                    "output": f"The current time is {current_time}. K-Scale AI day goes from 3pm to 8pm."
                 }
             )
 
