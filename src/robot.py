@@ -34,7 +34,7 @@ class Robot:
             environment (str): Type of camera implementation ("default", "pi")
         """
 
-        self.emotion = Emotion(fullscreen=fullscreen)
+        self.emotion = Emotion(robot=self,fullscreen=fullscreen)
         self.vision = Vision(
             debug=debug, 
             openai_api_key=openai_api_key,
@@ -226,3 +226,8 @@ class Robot:
         if event_name in self.event_handlers:
             handler = self.event_handlers[event_name]
             asyncio.create_task(handler(*args, **kwargs))
+
+    async def toggle_camera_view(self):
+        """Toggle camera view mode."""
+        if self.vision.toggle_camera_view():
+            self.emotion.show_camera_view = self.vision.show_camera_view

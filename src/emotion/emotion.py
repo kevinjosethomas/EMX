@@ -37,9 +37,10 @@ class Emotion(AsyncIOEventEmitter):
         previous_vertices (np.ndarray): Previous frame's vertex positions
         is_transitioning (bool): Flag indicating if in transition
         fps (int): Target frames per second
+        show_camera_view (bool): Flag indicating if camera view is enabled
     """
 
-    def __init__(self, width=1024, height=600, fullscreen=False):
+    def __init__(self, robot=None, width=1024, height=600, fullscreen=False):
         """Initialize the emotion display system.
 
         Args:
@@ -54,6 +55,7 @@ class Emotion(AsyncIOEventEmitter):
         super().__init__()
         pygame.init()
 
+        self.robot = robot
         self.screen_width = width
         self.screen_height = height
         if fullscreen:
@@ -78,6 +80,7 @@ class Emotion(AsyncIOEventEmitter):
 
         self.idle_manager = IdleAnimationManager(self)
         self.fps = 120
+        self.show_camera_view = False
 
     async def queue_animation(self, expression, force=False):
         """Add an expression to the animation queue.
@@ -181,67 +184,73 @@ class Emotion(AsyncIOEventEmitter):
 
         while self.running:
             self.screen.fill((30, 30, 30))
-            current_time = time.perf_counter()
-            elapsed_time = current_time - self.start_time
-
-            if not self.is_transitioning:
-                interpolated_vertices = self.current_expression.render(
-                    1.0,
-                    self.interpolation_func,
-                    self.screen_width,
-                    self.screen_height,
-                )
-
-                # Only queue neutral if non-sticky expression completes
-                if (
-                    elapsed_time > self.animation_duration
-                    and not self.current_expression.sticky
-                    and self.expression_queue.empty()
-                ):
-                    await self.queue_animation(
-                        Neutral(
-                            duration=1.0,
-                            transition_duration=0.2,
-                            interpolation="linear",
-                            sticky=True,
-                        )
-                    )
+            
+            if self.show_camera_view:
+                if self.robot and self.robot.vision and self.robot.vision.camera_view:
+                    self.robot.vision.camera_view.display_frames()
             else:
-                t = min(1.0, elapsed_time / self.transition_duration)
+                # pygame.display.set_mode((self.screen_width, self.screen_height))
+                current_time = time.perf_counter()
+                elapsed_time = current_time - self.start_time
 
-                if t >= 1.0:
-                    self.current_expression = self.target_expression
-                    self.target_expression = None
-                    self.is_transitioning = False
-                    self.start_time = current_time
+                if not self.is_transitioning:
                     interpolated_vertices = self.current_expression.render(
                         1.0,
                         self.interpolation_func,
                         self.screen_width,
                         self.screen_height,
                     )
-                else:
-                    target_vertices = self.target_expression.render(
-                        1.0,
-                        self.interpolation_func,
-                        self.screen_width,
-                        self.screen_height,
-                    )
-                    interpolated_vertices = [
-                        (
-                            self.previous_vertices[i][0] * (1 - t)
-                            + target_vertices[i][0] * t,
-                            self.previous_vertices[i][1] * (1 - t)
-                            + target_vertices[i][1] * t,
-                        )
-                        for i in range(len(self.previous_vertices))
-                    ]
 
-            # Render the eyes
-            left_eye = interpolated_vertices[:12]
-            right_eye = interpolated_vertices[12:]
-            pygame.draw.polygon(self.screen, (255, 255, 255), left_eye)
-            pygame.draw.polygon(self.screen, (255, 255, 255), right_eye)
+                    # Only queue neutral if non-sticky expression completes
+                    if (
+                        elapsed_time > self.animation_duration
+                        and not self.current_expression.sticky
+                        and self.expression_queue.empty()
+                    ):
+                        await self.queue_animation(
+                            Neutral(
+                                duration=1.0,
+                                transition_duration=0.2,
+                                interpolation="linear",
+                                sticky=True,
+                            )
+                        )
+                else:
+                    t = min(1.0, elapsed_time / self.transition_duration)
+
+                    if t >= 1.0:
+                        self.current_expression = self.target_expression
+                        self.target_expression = None
+                        self.is_transitioning = False
+                        self.start_time = current_time
+                        interpolated_vertices = self.current_expression.render(
+                            1.0,
+                            self.interpolation_func,
+                            self.screen_width,
+                            self.screen_height,
+                        )
+                    else:
+                        target_vertices = self.target_expression.render(
+                            1.0,
+                            self.interpolation_func,
+                            self.screen_width,
+                            self.screen_height,
+                        )
+                        interpolated_vertices = [
+                            (
+                                self.previous_vertices[i][0] * (1 - t)
+                                + target_vertices[i][0] * t,
+                                self.previous_vertices[i][1] * (1 - t)
+                                + target_vertices[i][1] * t,
+                            )
+                            for i in range(len(self.previous_vertices))
+                        ]
+
+                # Render the eyes
+                left_eye = interpolated_vertices[:12]
+                right_eye = interpolated_vertices[12:]
+                pygame.draw.polygon(self.screen, (255, 255, 255), left_eye)
+                pygame.draw.polygon(self.screen, (255, 255, 255), right_eye)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:

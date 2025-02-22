@@ -5,8 +5,8 @@ from typing import Optional
 from openai import AsyncOpenAI
 from .face_detector import FaceDetector
 from pyee.asyncio import AsyncIOEventEmitter
-from .gesture_detector import GestureDetector
 from .scene_descriptor import SceneDescriptor
+from .camera_view import CameraView
 
 
 class Vision(AsyncIOEventEmitter):
@@ -30,10 +30,11 @@ class Vision(AsyncIOEventEmitter):
         self.cap = None
         self.detectors = []
         self.running = False
+        self.camera_view = None
+        self.show_camera_view = False
 
         self.face_detector = FaceDetector(debug=debug)
-        self.gesture_detector = GestureDetector()
-        self.detectors.extend([self.face_detector, self.gesture_detector])
+        self.detectors.extend([self.face_detector])
         self.openai_client = AsyncOpenAI(api_key=openai_api_key)
 
         self.scene_descriptor = SceneDescriptor(use_local_model=False)
@@ -51,15 +52,10 @@ class Vision(AsyncIOEventEmitter):
             "face_appeared", lambda data: forward_event("face_appeared", data)
         )
         self.face_detector.on(
-            "face_disappeared", lambda: forward_event("face_disappeared")
+            "face_disappeared", lambda data: forward_event("face_disappeared", data)
         )
         self.face_detector.on(
-            "face_tracked", lambda data: forward_event("face_tracked", data)
-        )
-
-        self.gesture_detector.on(
-            "gesture_detected",
-            lambda data: forward_event("gesture_detected", data),
+            "faces_tracked", lambda data: forward_event("faces_tracked", data)
         )
 
     async def setup(self):
@@ -75,6 +71,7 @@ class Vision(AsyncIOEventEmitter):
 
         if self.environment == "pi":
             self.cap = cv2.VideoCapture("/dev/video45")
+            self.camera_view = CameraView(self)
         else:
             self.cap = cv2.VideoCapture(self.camera_id)
 
@@ -95,6 +92,9 @@ class Vision(AsyncIOEventEmitter):
             self.cap.release()
         for detector in self.detectors:
             await detector.cleanup()
+
+        if self.camera_view:
+            self.camera_view.cleanup()
 
     async def run(self):
         """Run the main vision processing loop.
@@ -190,3 +190,22 @@ class Vision(AsyncIOEventEmitter):
             self.current_scene_description
             or "I'm still processing what I see."
         )
+
+    def toggle_camera_view(self):
+        """Toggle between camera view and normal face display."""
+
+        if self.environment == "pi":
+            self.show_camera_view = not self.show_camera_view
+            if self.camera_view:
+                if self.show_camera_view:
+                    self.camera_view.create_window()
+                else:
+                    self.camera_view.destroy_window()
+            return True
+        return False
+
+    def get_camera_view_frame(self):
+        """Get the current camera view frame if enabled."""
+        if self.show_camera_view and self.camera_view:
+            return self.camera_view.get_combined_frame()
+        return None

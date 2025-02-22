@@ -1,10 +1,10 @@
 import cv2
 
 # Open the video device. Ensure the device exists and has correct permissions.
-cap = cv2.VideoCapture('/dev/video45')
+cap = cv2.VideoCapture('/dev/video46')
 
 if not cap.isOpened():
-    print("Error: Could not open video device /dev/video45")
+    print("Error: Could not open video device /dev/video46")
     exit()
 
 # Optionally, you can set capture properties (e.g., resolution)

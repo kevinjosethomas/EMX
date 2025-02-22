@@ -10,7 +10,7 @@ def test_audio_recording():
     FORMAT = pyaudio.paInt16
     CHANNELS = 1
     RATE = 44100
-    RECORD_SECONDS = 40
+    RECORD_SECONDS = 10
     
     # Create debug_audio directory if it doesn't exist
     os.makedirs('debug_audio', exist_ok=True)

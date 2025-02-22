@@ -26,7 +26,7 @@ async def on_ready():
 async def on_face_appeared():
     await robot.emotion.queue_animation(Happy())
 
-@robot.event("face_tracked")
+@robot.event("faces_tracked")
 async def on_face_tracked(face):
     print(f"Face position: {face}")
 
@@ -147,4 +147,16 @@ xset s noblank # Don't blank video device
 Develop a basic script using the robot API as shown above, and run it:
 `python3 bot.py`
 
+If you get an error like this:
+```
+qt.qpa.xcb: could not connect to display 
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/dpsh/EMX/venv/lib/python3.10/site-packages/cv2/qt/plugins" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: xcb.
+```
+Run the following command:
+```
+export DISPLAY=:0
+```
 ---
