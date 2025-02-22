@@ -99,7 +99,7 @@ class Voice(AsyncIOEventEmitter):
         )
 
         self.debug = debug
-        self.debug_mic_buffer = io.BytesIO() if debug else None
+        self.debug_mic_buffer = io.BytesIO()
 
         print("Initializing Voice")
 
@@ -135,6 +135,15 @@ class Voice(AsyncIOEventEmitter):
                     "properties": {},
                     "required": [],
                 },
+            },
+            {
+            "type": "function",
+            "name": "toggle_camera_view",
+            "description": "Toggle between showing the robot's camera feeds and its normal face display",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
             }
         ]
 
@@ -165,7 +174,7 @@ class Voice(AsyncIOEventEmitter):
         self.should_send_audio.clear()
 
         if event.item_id != self.last_audio_item_id:
-            if self.debug and hasattr(self, "current_utterance_buffer"):
+            if hasattr(self, "current_utterance_buffer"):
                 try:
                     filename = self._get_timestamp_filename("input")
                     audio_data = self.current_utterance_buffer.getvalue()
@@ -262,21 +271,20 @@ class Voice(AsyncIOEventEmitter):
                 },
             )
 
-            if self.debug:
-                try:
-                    filename = self._get_timestamp_filename(
-                        "output", detected_emotion
-                    )
-                    audio = AudioSegment(
-                        data=emotion_audio,
-                        sample_width=2,
-                        frame_rate=24000,
-                        channels=1,
-                    )
-                    audio.export(filename, format="wav")
-                    print(f"Saved output audio: {filename}")
-                except Exception as e:
-                    print(f"Error saving debug audio: {e}")
+            try:
+                filename = self._get_timestamp_filename(
+                    "output", detected_emotion
+                )
+                audio = AudioSegment(
+                    data=emotion_audio,
+                    sample_width=2,
+                    frame_rate=24000,
+                    channels=1,
+                )
+                audio.export(filename, format="wav")
+                print(f"Saved output audio: {filename}")
+            except Exception as e:
+                print(f"Error saving debug audio: {e}")
 
     def _reset_emotion_buffer(self):
         """Reset emotion analysis state for new utterance.
@@ -574,12 +582,21 @@ class Voice(AsyncIOEventEmitter):
         """
         if event.name == "describe_vision":
             description = await self.robot.vision.get_scene_description()
-
             await self.connection.conversation.item.create(
                 item={
                     "type": "function_call_output",
                     "call_id": event.call_id,
                     "output": description,
+                }
+            )
+        elif event.name == "toggle_camera_view":
+            await self.robot.toggle_camera_view()
+            state = "on" if self.robot.vision.show_camera_view else "off"
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "function_call_output",
+                    "call_id": event.call_id,
+                    "output": f"Camera view is now {state}. You can now {'see through my eyes' if state == 'on' else 'see my face again'}."
                 }
             )
 
