@@ -12,7 +12,7 @@ class FaceDetector(BaseDetector):
         face_tracked: Every frame with face position data
     """
 
-    def __init__(self, min_detection_confidence=0.5, debug=False):
+    def __init__(self, min_detection_confidence=0.8, debug=False):
         """Initialize the face detector.
 
         Args:
@@ -88,9 +88,3 @@ class FaceDetector(BaseDetector):
             if self.face_present:
                 self.emit("face_disappeared")
                 self.face_present = False
-
-        if self.debug:
-            cv2.imshow(
-                "Face Detection Debug", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            )
-            cv2.waitKey(1)

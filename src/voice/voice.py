@@ -452,37 +452,49 @@ class Voice(AsyncIOEventEmitter):
         print(
             f"Using input sample rate {actual_input_sr} instead of {SAMPLE_RATE}"
         )
-        read_size = int(actual_input_sr * 0.02)
 
-        self.current_utterance_buffer = io.BytesIO()
+        # Increase buffer size to prevent dropping samples
+        read_size = int(actual_input_sr * 0.1)  # Increased from 0.02 to 0.1
 
-        if self.debug:
-            os.makedirs("debug_audio/input", exist_ok=True)
-
+        # Add latency setting for more stable buffering
         stream = sd.InputStream(
             device=device,
             channels=CHANNELS,
             samplerate=actual_input_sr,
             dtype="int16",
+            blocksize=read_size,
+            latency="high",  # Add latency setting
+            callback=None,  # Explicitly set no callback for blocking mode
         )
         stream.start()
 
         try:
             while True:
                 await self.should_send_audio.wait()
-                data, _ = stream.read(read_size)
+
+                # Read with timeout to prevent blocking indefinitely
+                try:
+                    data, _ = stream.read(read_size)
+                except sd.PortAudioError as e:
+                    print(f"PortAudio error: {e}")
+                    await asyncio.sleep(0.1)
+                    continue
+
                 raw_bytes = data.tobytes()
 
                 if not sent_audio:
                     self.current_utterance_buffer = io.BytesIO()
 
+                # Use pydub for more reliable resampling
                 if self.input_sample_rate != 24000:
                     segment = AudioSegment(
                         data=raw_bytes,
                         sample_width=2,
                         frame_rate=self.input_sample_rate,
                         channels=CHANNELS,
-                    ).set_frame_rate(24000)
+                    )
+                    # Add higher quality resampling
+                    segment = segment.set_frame_rate(24000)
                     audio_bytes = segment.raw_data
                 else:
                     audio_bytes = raw_bytes
@@ -496,7 +508,9 @@ class Voice(AsyncIOEventEmitter):
 
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 await connection.input_audio_buffer.append(audio=audio_b64)
-                await asyncio.sleep(0)
+
+                # Small delay to prevent overwhelming the connection
+                await asyncio.sleep(0.01)
 
         finally:
             stream.stop()

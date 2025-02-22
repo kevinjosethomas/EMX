@@ -18,7 +18,7 @@ from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 CHANNELS = 1
 SAMPLE_RATE = 24000
 FORMAT = pyaudio.paInt16
-CHUNK_LENGTH_S = 0.05  # 100ms
+CHUNK_LENGTH_S = 0.1  # Increased from 0.05 to 0.1 for more stable buffering
 
 
 def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:

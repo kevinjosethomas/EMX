@@ -16,7 +16,13 @@ class Vision(AsyncIOEventEmitter):
     Aggregates and relays events from individual detectors.
     """
 
-    def __init__(self, camera_id=2, debug=False, openai_api_key=None, environment="default"):
+    def __init__(
+        self,
+        camera_id=2,
+        debug=False,
+        openai_api_key=None,
+        environment="default",
+    ):
         super().__init__()
         self.camera_id = camera_id
         self.debug = debug
@@ -25,7 +31,7 @@ class Vision(AsyncIOEventEmitter):
         self.detectors = []
         self.running = False
 
-        self.face_detector = FaceDetector(debug=False)
+        self.face_detector = FaceDetector(debug=debug)
         self.gesture_detector = GestureDetector()
         self.detectors.extend([self.face_detector, self.gesture_detector])
         self.openai_client = AsyncOpenAI(api_key=openai_api_key)
@@ -66,7 +72,6 @@ class Vision(AsyncIOEventEmitter):
             RuntimeError: If camera cannot be opened
             Exception: If detector initialization fails
         """
-
 
         self.cap = cv2.VideoCapture(self.camera_id)
         if not self.cap.isOpened():
@@ -116,6 +121,8 @@ class Vision(AsyncIOEventEmitter):
                 break
 
             frame = cv2.flip(frame, 1)
+            if self.environment == "pi":
+                frame = cv2.flip(frame, 0)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             for detector in self.detectors:
