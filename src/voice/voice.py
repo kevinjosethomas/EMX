@@ -43,7 +43,7 @@ class Voice(AsyncIOEventEmitter):
     """
 
     def __init__(
-        self, openai_api_key, robot=None, microphone_id=None, debug=False
+        self, openai_api_key, robot=None, microphone_id=None, debug=False, volume=0.1
     ):
         """Initialize the Voice system with OpenAI API and audio settings.
 
@@ -55,6 +55,7 @@ class Voice(AsyncIOEventEmitter):
             robot (Robot, optional): Reference to the main robot instance. Defaults to None.
             microphone_id (str, optional): Specific microphone device ID. Defaults to None.
             debug (bool, optional): Enable debug audio recording
+            volume (float, optional): Initial volume for audio playback
 
         Attributes:
             client: OpenAI API client instance
@@ -72,6 +73,7 @@ class Voice(AsyncIOEventEmitter):
         self.connection = None
         self.session = None
         self.audio_player = AudioPlayerAsync()
+        self.audio_player.set_volume(volume)
         self.should_send_audio = asyncio.Event()
         self.connected = asyncio.Event()
         self.last_audio_item_id = None
@@ -605,3 +607,7 @@ class Voice(AsyncIOEventEmitter):
                     await conn.response.create()
                 elif event.type == "error":
                     print(event.error)
+
+    def set_volume(self, volume: float):
+        """Set the audio playback volume (0.0 to 1.0)"""
+        self.audio_player.set_volume(volume)

@@ -41,6 +41,7 @@ class AudioPlayerAsync:
     def __init__(self):
         self.queue = []
         self.lock = threading.Lock()
+        self.volume = 0.1
         
         # Query available devices
         devices = sd.query_devices()
@@ -105,6 +106,9 @@ class AudioPlayerAsync:
                     (data, np.zeros(frames - len(data), dtype=np.int16))
                 )
 
+            print(self.volume)
+            data = (data * self.volume).astype(np.int16)
+
         outdata[:] = data.reshape(-1, 1)
 
     def reset_frame_count(self):
@@ -154,6 +158,10 @@ class AudioPlayerAsync:
     def terminate(self):
         if self.stream is not None:
             self.stream.close()
+
+    def set_volume(self, volume: float):
+        """Set the playback volume (0.0 to 1.0)"""
+        self.volume = max(0.0, min(1.0, volume))
 
 
 async def send_audio_worker_sounddevice(
