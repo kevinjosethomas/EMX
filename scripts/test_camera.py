@@ -30,6 +30,10 @@ class DualCameraView:
         self.frame_interval = 1/30
         self.last_frame_time = 0
         
+        # Track the last volume to avoid too frequent updates
+        self.last_volume = 0
+        self.volume_update_threshold = 0.05  # 5% change threshold
+        
         for cap in [self.left_cap, self.right_cap]:
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, width // 2)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
@@ -87,6 +91,17 @@ class DualCameraView:
             self.mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2)
         )
             
+    def calculate_volume_from_hand(self, hand_landmarks, frame_height):
+        """Calculate volume (0-1) based on hand position"""
+        # Use the position of the middle finger tip (landmark 12)
+        middle_finger_y = hand_landmarks.landmark[12].y
+        
+        # Convert to relative position (0-1), flip so raising hand increases volume
+        volume = 1 - middle_finger_y
+        
+        # Clamp between 0 and 1
+        return max(0, min(1, volume))
+
     def process_frame(self, frame, detect_features=False):
         """Process a single frame with optional face and hand detection"""
         if frame is None:
@@ -114,6 +129,24 @@ class DualCameraView:
             if hand_results.multi_hand_landmarks:
                 for hand_landmarks in hand_results.multi_hand_landmarks:
                     self.draw_hand_landmarks(frame, hand_landmarks)
+                    
+                    # Calculate volume from first detected hand
+                    new_volume = self.calculate_volume_from_hand(hand_results.multi_hand_landmarks[0], frame.shape[0])
+                    
+                    # Only update if change is significant
+                    if abs(new_volume - self.last_volume) > self.volume_update_threshold:
+                        self.last_volume = new_volume
+                        
+                        # Make tool call to set volume
+                        yield {
+                            "type": "function",
+                            "function": {
+                                "name": "set_volume",
+                                "arguments": {
+                                    "volume": round(new_volume, 2)
+                                }
+                            }
+                        }
         
         frame = cv2.resize(frame, (self.width // 2, self.height))
         return frame
@@ -138,8 +171,11 @@ class DualCameraView:
                 print("Failed to grab frame from one or both cameras")
                 break
                 
-            left_frame = self.process_frame(left_frame, detect_features=True)  # Detect faces and hands on left camera
-            right_frame = self.process_frame(right_frame)  # No detection for right camera
+            # Handle tool calls from process_frame
+            for tool_call in self.process_frame(left_frame, detect_features=True):
+                yield tool_call
+                
+            right_frame = self.process_frame(right_frame)
             combined_frame = np.hstack((left_frame, right_frame))
             
             cv2.imshow('Dual Camera View', combined_frame)

@@ -1,5 +1,6 @@
 import io
 import os
+import json
 import time
 import base64
 import random
@@ -165,6 +166,23 @@ class Voice(AsyncIOEventEmitter):
                 "parameters": {
                     "type": "object",
                     "properties": {}
+                }
+            },
+            {
+                "type": "function",
+                "name": "set_volume",
+                "description": "Set the volume of the robot's voice",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "volume": {
+                            "type": "number",
+                            "description": "Volume level between 0.0 (silent) and 1.0 (maximum)",
+                            "minimum": 0.0,
+                            "maximum": 1.0
+                        }
+                    },
+                    "required": ["volume"]
                 }
             }
         ]
@@ -646,6 +664,17 @@ class Voice(AsyncIOEventEmitter):
                     "type": "function_call_output",
                     "call_id": event.call_id,
                     "output": f"The current time is {current_time}. K-Scale AI day goes from 3pm to 8pm."
+                }
+            )
+        elif event.name == "set_volume":
+            args = json.loads(event.arguments)
+            volume = float(args["volume"])
+            self.set_volume(volume)
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "function_call_output",
+                    "call_id": event.call_id,
+                    "output": f"Volume has been set to {int(volume * 100)}%"
                 }
             )
 
