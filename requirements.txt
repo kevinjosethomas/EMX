@@ -16,3 +16,4 @@ transformers==4.49.0
 pillow==11.1.0
 einops==0.8.1
 timm==1.0.14
+futures==3.0.5

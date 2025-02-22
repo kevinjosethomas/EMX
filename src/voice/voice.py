@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 from pyee.asyncio import AsyncIOEventEmitter
 from .audio import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+import concurrent.futures
 
 SYSTEM_PROMPT = """You are the voice of K-Bot. You can see through your camera by using the describe_vision function. NEVER say that you cannot see—you can just use the function. If you see a person, it would make sense to assume they are the person you are talking to. Be concise. You do not yet have the capability to control movement, but you communicate as the robot itself, never breaking character or referencing anything beyond this role. You always speak in English unless explicitly asked otherwise. You are thoughtful, engaging, and eager to learn."""
 
@@ -107,6 +108,18 @@ class Voice(AsyncIOEventEmitter):
             os.makedirs("debug_audio", exist_ok=True)
             os.makedirs("debug_audio/input", exist_ok=True)
             os.makedirs("debug_audio/output", exist_ok=True)
+
+        self.audio_thread_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="audio_processor"
+        )
+        
+        if hasattr(os, 'sched_get_priority_max'):
+            try:
+                audio_priority = os.sched_get_priority_max(os.SCHED_FIFO)
+                os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(audio_priority))
+            except Exception as e:
+                print(f"Could not set audio thread priority: {e}")
 
     async def _handle_session_created(self, conn):
         """Handle OpenAI session creation and setup.
@@ -452,6 +465,22 @@ class Voice(AsyncIOEventEmitter):
 
     async def send_mic_audio(self) -> None:
         """Capture and stream microphone audio to OpenAI's API."""
+        try:
+            # Run audio capture in separate thread
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                self.audio_thread_pool,
+                self._capture_audio
+            )
+        except Exception as e:
+            print(f"Error in mic audio capture: {e}")
+
+    def _capture_audio(self):
+        """Audio capture function running in separate thread."""
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
         sent_audio = False
         device = self.microphone_id if self.microphone_id is not None else None
         device_info = sd.query_devices(device, "input")
@@ -461,68 +490,70 @@ class Voice(AsyncIOEventEmitter):
             f"Using input sample rate {actual_input_sr} instead of {SAMPLE_RATE}"
         )
 
-        # Increase buffer size to prevent dropping samples
-        read_size = int(actual_input_sr * 0.1)  # Increased from 0.02 to 0.1
+        read_size = int(actual_input_sr * 0.1)
 
-        # Add latency setting for more stable buffering
         stream = sd.InputStream(
             device=device,
             channels=CHANNELS,
             samplerate=actual_input_sr,
             dtype="int16",
             blocksize=read_size,
-            latency="high",  # Add latency setting
-            callback=None,  # Explicitly set no callback for blocking mode
+            latency="high",
+            callback=None,
         )
         stream.start()
 
         try:
             while True:
-                await self.should_send_audio.wait()
+                if not self.should_send_audio.is_set():
+                    time.sleep(0.1)
+                    continue
 
-                # Read with timeout to prevent blocking indefinitely
                 try:
                     data, _ = stream.read(read_size)
                 except sd.PortAudioError as e:
                     print(f"PortAudio error: {e}")
-                    await asyncio.sleep(0.1)
+                    time.sleep(0.1)
                     continue
 
-                raw_bytes = data.tobytes()
-
-                if not sent_audio:
-                    self.current_utterance_buffer = io.BytesIO()
-
-                # Use pydub for more reliable resampling
-                if self.input_sample_rate != 24000:
-                    segment = AudioSegment(
-                        data=raw_bytes,
-                        sample_width=2,
-                        frame_rate=self.input_sample_rate,
-                        channels=CHANNELS,
-                    )
-                    # Add higher quality resampling
-                    segment = segment.set_frame_rate(24000)
-                    audio_bytes = segment.raw_data
-                else:
-                    audio_bytes = raw_bytes
-
-                self.current_utterance_buffer.write(audio_bytes)
-
-                connection = await self._get_connection()
-                if not sent_audio:
-                    await connection.send({"type": "response.cancel"})
-                    sent_audio = True
-
-                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-                await connection.input_audio_buffer.append(audio=audio_b64)
-
-                # Small delay to prevent overwhelming the connection
-                await asyncio.sleep(0.01)
+                asyncio.run_coroutine_threadsafe(
+                    self._process_audio_data(data, sent_audio),
+                    self._main_loop
+                )
+                sent_audio = True
 
         finally:
             stream.stop()
             stream.close()
+
+    async def _process_audio_data(self, data, sent_audio):
+        """Process audio data with async operations."""
+        raw_bytes = data.tobytes()
+        
+        if not sent_audio:
+            self.current_utterance_buffer = io.BytesIO()
+
+        if self.input_sample_rate != 24000:
+            segment = AudioSegment(
+                data=raw_bytes,
+                sample_width=2,
+                frame_rate=self.input_sample_rate,
+                channels=CHANNELS,
+            )
+            segment = segment.set_frame_rate(24000)
+            audio_bytes = segment.raw_data
+        else:
+            audio_bytes = raw_bytes
+
+        self.current_utterance_buffer.write(audio_bytes)
+
+        connection = await self._get_connection()
+        if not sent_audio:
+            await connection.send({"type": "response.cancel"})
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        await connection.input_audio_buffer.append(audio=audio_b64)
+        await asyncio.sleep(0.01)
 
     def _apply_robot_effect(self, audio_bytes):
         """Apply robotic effects to create a more mechanical but clear voice.
@@ -626,6 +657,9 @@ class Voice(AsyncIOEventEmitter):
             Microphone input is paused during assistant speech to prevent feedback.
         """
 
+        # Initialize main loop at start of run
+        self._main_loop = asyncio.get_running_loop()
+        
         asyncio.create_task(self.send_mic_audio())
 
         async with self.client.beta.realtime.connect(

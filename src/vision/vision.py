@@ -129,8 +129,9 @@ class Vision(AsyncIOEventEmitter):
                 frame = cv2.flip(frame, 0)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            for detector in self.detectors:
-                await detector.process_frame(rgb_frame)
+            if not self.show_camera_view:
+                for detector in self.detectors:
+                    await detector.process_frame(rgb_frame)
 
             await asyncio.sleep(0.01)
 

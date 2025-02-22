@@ -18,16 +18,16 @@ from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 CHANNELS = 1
 SAMPLE_RATE = 24000
 FORMAT = pyaudio.paInt16
-CHUNK_LENGTH_S = 0.1  # Increased from 0.05 to 0.1 for more stable buffering
+CHUNK_LENGTH_S = 0.1 
 
 
 def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
-    # load the audio file from the byte stream
+    
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
     print(
         f"Loaded audio: {audio.frame_rate=} {audio.channels=} {audio.sample_width=} {audio.frame_width=}"
     )
-    # resample to 24kHz mono pcm16
+    
     pcm_audio = (
         audio.set_frame_rate(SAMPLE_RATE)
         .set_channels(CHANNELS)
@@ -42,23 +42,21 @@ class AudioPlayerAsync:
         self.queue = []
         self.lock = threading.Lock()
         self.volume = 0.15
+        self.buffer_size = 4096
+        self.min_buffer_fill = 0.5
 
-        # Query available devices
         devices = sd.query_devices()
         print("Available audio devices:")
         print(devices)
 
-        # Try to find a valid default output device
         try:
             default_device = sd.query_devices(kind="output")
             device_id = default_device["index"]
             print(f"Using output device: {default_device['name']}")
 
-            # Get supported sample rates
             supported_rates = default_device.get("default_samplerate")
             print(f"Device default sample rate: {supported_rates}")
 
-            # Store both rates for conversion
             self.input_rate = SAMPLE_RATE
             self.output_rate = (
                 int(supported_rates) if supported_rates else SAMPLE_RATE
@@ -123,24 +121,26 @@ class AudioPlayerAsync:
     def add_data(self, data: bytes):
         if self.stream is None:
             return
+            
         with self.lock:
-            # Convert incoming audio data to the correct sample rate
+            # Convert incoming audio data
             if self.input_rate != self.output_rate:
-                # Convert bytes to AudioSegment
                 audio_segment = AudioSegment(
                     data=data,
                     sample_width=2,
                     frame_rate=self.input_rate,
                     channels=CHANNELS,
                 )
-                # Resample to output rate
                 resampled = audio_segment.set_frame_rate(self.output_rate)
                 np_data = np.frombuffer(resampled.raw_data, dtype=np.int16)
             else:
                 np_data = np.frombuffer(data, dtype=np.int16)
-
+                
+            # Add to queue with buffering
             self.queue.append(np_data)
-            if not self.playing:
+            buffer_fill = sum(len(x) for x in self.queue) / self.buffer_size
+            
+            if not self.playing and buffer_fill >= self.min_buffer_fill:
                 self.start()
 
     def start(self):
