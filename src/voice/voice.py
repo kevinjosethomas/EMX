@@ -43,7 +43,12 @@ class Voice(AsyncIOEventEmitter):
     """
 
     def __init__(
-        self, openai_api_key, robot=None, microphone_id=None, debug=False, volume=0.1
+        self,
+        openai_api_key,
+        robot=None,
+        microphone_id=None,
+        debug=False,
+        volume=0.1,
     ):
         """Initialize the Voice system with OpenAI API and audio settings.
 
@@ -160,6 +165,21 @@ class Voice(AsyncIOEventEmitter):
         self.should_send_audio.clear()
 
         if event.item_id != self.last_audio_item_id:
+            if self.debug and hasattr(self, "current_utterance_buffer"):
+                try:
+                    filename = self._get_timestamp_filename("input")
+                    audio_data = self.current_utterance_buffer.getvalue()
+                    audio = AudioSegment(
+                        data=audio_data,
+                        sample_width=2,
+                        frame_rate=24000,
+                        channels=1,
+                    )
+                    audio.export(filename, format="wav")
+                    print(f"Saved input audio: {filename}")
+                except Exception as e:
+                    print(f"Error saving input audio: {e}")
+
             self._reset_buffers(event.item_id)
 
         audio_bytes = base64.b64decode(event.delta)
@@ -423,16 +443,7 @@ class Voice(AsyncIOEventEmitter):
             return None
 
     async def send_mic_audio(self) -> None:
-        """Capture and stream microphone audio to OpenAI's API.
-
-        This method:
-        1. Initializes a real-time audio input stream with the device's default sample rate.
-        2. Continuously captures audio chunks.
-        3. Resamples the audio to 24000 Hz if the input device uses a different rate.
-        4. Sends chunks to OpenAI's API for processing.
-        5. Manages the session state including canceling existing responses
-           when new audio input begins.
-        """
+        """Capture and stream microphone audio to OpenAI's API."""
         sent_audio = False
         device = self.microphone_id if self.microphone_id is not None else None
         device_info = sd.query_devices(device, "input")
@@ -443,8 +454,10 @@ class Voice(AsyncIOEventEmitter):
         )
         read_size = int(actual_input_sr * 0.02)
 
+        self.current_utterance_buffer = io.BytesIO()
+
         if self.debug:
-            self.debug_mic_buffer = io.BytesIO()
+            os.makedirs("debug_audio/input", exist_ok=True)
 
         stream = sd.InputStream(
             device=device,
@@ -459,6 +472,10 @@ class Voice(AsyncIOEventEmitter):
                 await self.should_send_audio.wait()
                 data, _ = stream.read(read_size)
                 raw_bytes = data.tobytes()
+
+                if not sent_audio:
+                    self.current_utterance_buffer = io.BytesIO()
+
                 if self.input_sample_rate != 24000:
                     segment = AudioSegment(
                         data=raw_bytes,
@@ -469,6 +486,8 @@ class Voice(AsyncIOEventEmitter):
                     audio_bytes = segment.raw_data
                 else:
                     audio_bytes = raw_bytes
+
+                self.current_utterance_buffer.write(audio_bytes)
 
                 connection = await self._get_connection()
                 if not sent_audio:
@@ -578,8 +597,6 @@ class Voice(AsyncIOEventEmitter):
 
         asyncio.create_task(self.send_mic_audio())
 
-        print("Connecting to OpenAI")
-
         async with self.client.beta.realtime.connect(
             model="gpt-4o-mini-realtime-preview"
         ) as conn:
@@ -596,10 +613,8 @@ class Voice(AsyncIOEventEmitter):
                 elif event.type == "session.updated":
                     self.session = event.session
                 elif event.type == "response.audio.delta":
-                    print("Audio delta")
                     await self._handle_audio_delta(event)
                 elif event.type == "response.done":
-                    print("Response done")
                     self.emit("_assistant_message_end")
                     asyncio.create_task(self.wait_for_audio_completion())
                 elif event.type == "response.function_call_arguments.done":

@@ -42,27 +42,31 @@ class AudioPlayerAsync:
         self.queue = []
         self.lock = threading.Lock()
         self.volume = 0.1
-        
+
         # Query available devices
         devices = sd.query_devices()
         print("Available audio devices:")
         print(devices)
-        
+
         # Try to find a valid default output device
         try:
-            default_device = sd.query_devices(kind='output')
-            device_id = default_device['index']
+            default_device = sd.query_devices(kind="output")
+            device_id = default_device["index"]
             print(f"Using output device: {default_device['name']}")
-            
+
             # Get supported sample rates
-            supported_rates = default_device.get('default_samplerate')
+            supported_rates = default_device.get("default_samplerate")
             print(f"Device default sample rate: {supported_rates}")
-            
+
             # Store both rates for conversion
             self.input_rate = SAMPLE_RATE
-            self.output_rate = int(supported_rates) if supported_rates else SAMPLE_RATE
-            print(f"Input rate: {self.input_rate}, Output rate: {self.output_rate}")
-            
+            self.output_rate = (
+                int(supported_rates) if supported_rates else SAMPLE_RATE
+            )
+            print(
+                f"Input rate: {self.input_rate}, Output rate: {self.output_rate}"
+            )
+
         except Exception as e:
             print(f"Warning: Error querying output device: {e}")
             device_id = None
@@ -106,7 +110,6 @@ class AudioPlayerAsync:
                     (data, np.zeros(frames - len(data), dtype=np.int16))
                 )
 
-            print(self.volume)
             data = (data * self.volume).astype(np.int16)
 
         outdata[:] = data.reshape(-1, 1)
@@ -128,14 +131,14 @@ class AudioPlayerAsync:
                     data=data,
                     sample_width=2,
                     frame_rate=self.input_rate,
-                    channels=CHANNELS
+                    channels=CHANNELS,
                 )
                 # Resample to output rate
                 resampled = audio_segment.set_frame_rate(self.output_rate)
                 np_data = np.frombuffer(resampled.raw_data, dtype=np.int16)
             else:
                 np_data = np.frombuffer(data, dtype=np.int16)
-                
+
             self.queue.append(np_data)
             if not self.playing:
                 self.start()
@@ -162,58 +165,3 @@ class AudioPlayerAsync:
     def set_volume(self, volume: float):
         """Set the playback volume (0.0 to 1.0)"""
         self.volume = max(0.0, min(1.0, volume))
-
-
-async def send_audio_worker_sounddevice(
-    connection: AsyncRealtimeConnection,
-    should_send: Callable[[], bool] | None = None,
-    start_send: Callable[[], Awaitable[None]] | None = None,
-):
-    sent_audio = False
-
-    device_info = sd.query_devices()
-    print(device_info)
-
-    read_size = int(SAMPLE_RATE * 0.02)
-
-    stream = sd.InputStream(
-        channels=CHANNELS,
-        samplerate=SAMPLE_RATE,
-        dtype="int16",
-    )
-    stream.start()
-
-    try:
-        while True:
-            if stream.read_available < read_size:
-                await asyncio.sleep(0)
-                continue
-
-            data, _ = stream.read(read_size)
-
-            if should_send() if should_send else True:
-                if not sent_audio and start_send:
-                    await start_send()
-                await connection.send(
-                    {
-                        "type": "input_audio_buffer.append",
-                        "audio": base64.b64encode(data).decode("utf-8"),
-                    }
-                )
-                sent_audio = True
-
-            elif sent_audio:
-                print("Done, triggering inference")
-                await connection.send({"type": "input_audio_buffer.commit"})
-                await connection.send(
-                    {"type": "response.create", "response": {}}
-                )
-                sent_audio = False
-
-            await asyncio.sleep(0)
-
-    except KeyboardInterrupt:
-        pass
-    finally:
-        stream.stop()
-        stream.close()
