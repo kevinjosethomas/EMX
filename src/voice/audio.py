@@ -57,24 +57,25 @@ class AudioPlayerAsync:
             supported_rates = default_device.get('default_samplerate')
             print(f"Device default sample rate: {supported_rates}")
             
-            # Use device's default sample rate if 24000 isn't supported
-            sample_rate = SAMPLE_RATE
-            if supported_rates and supported_rates != SAMPLE_RATE:
-                print(f"Using device sample rate {supported_rates} instead of {SAMPLE_RATE}")
-                sample_rate = int(supported_rates)
+            # Store both rates for conversion
+            self.input_rate = SAMPLE_RATE
+            self.output_rate = int(supported_rates) if supported_rates else SAMPLE_RATE
+            print(f"Input rate: {self.input_rate}, Output rate: {self.output_rate}")
+            
         except Exception as e:
             print(f"Warning: Error querying output device: {e}")
             device_id = None
-            sample_rate = SAMPLE_RATE
+            self.input_rate = SAMPLE_RATE
+            self.output_rate = SAMPLE_RATE
 
         try:
             self.stream = sd.OutputStream(
                 device=device_id,
                 callback=self.callback,
-                samplerate=sample_rate,
+                samplerate=self.output_rate,
                 channels=CHANNELS,
                 dtype=np.int16,
-                blocksize=int(CHUNK_LENGTH_S * sample_rate),
+                blocksize=int(CHUNK_LENGTH_S * self.output_rate),
             )
             self.playing = False
             self._frame_count = 0
@@ -116,7 +117,21 @@ class AudioPlayerAsync:
         if self.stream is None:
             return
         with self.lock:
-            np_data = np.frombuffer(data, dtype=np.int16)
+            # Convert incoming audio data to the correct sample rate
+            if self.input_rate != self.output_rate:
+                # Convert bytes to AudioSegment
+                audio_segment = AudioSegment(
+                    data=data,
+                    sample_width=2,
+                    frame_rate=self.input_rate,
+                    channels=CHANNELS
+                )
+                # Resample to output rate
+                resampled = audio_segment.set_frame_rate(self.output_rate)
+                np_data = np.frombuffer(resampled.raw_data, dtype=np.int16)
+            else:
+                np_data = np.frombuffer(data, dtype=np.int16)
+                
             self.queue.append(np_data)
             if not self.playing:
                 self.start()
