@@ -16,7 +16,15 @@ class CameraView:
             min_detection_confidence=0.7,
             model_selection=0
         )
-        self.faces_present = 0  # Track number of faces
+        
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(
+            min_detection_confidence=0.6,
+            min_tracking_confidence=0.6,
+            max_num_hands=2
+        )
+        
+        self.faces_present = 0 
         
         self.left_display_cap = cv2.VideoCapture('/dev/video46')
         self.window_created = False
@@ -31,7 +39,6 @@ class CameraView:
             cv2.setWindowProperty('Camera View', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             cv2.resizeWindow('Camera View', self.width, self.height)
             cv2.setWindowProperty('Camera View', cv2.WND_PROP_TOPMOST, 1)
-            # Remove toolbar and keep window clean
             cv2.displayOverlay('Camera View', '', 1)
             self.window_created = True
         
@@ -73,8 +80,20 @@ class CameraView:
                     (0, 0, 0), 
                     2)
         
+    def draw_hand_landmarks(self, frame, hand_landmarks):
+        """Draw hand landmarks and connections."""
+
+        self.mp_drawing.draw_landmarks(
+            frame,
+            hand_landmarks,
+            self.mp_hands.HAND_CONNECTIONS,
+            self.mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
+            self.mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2)
+        )
+
     def get_frame(self, cap, use_vision_camera=False):
-        """Get a frame from camera with face detection overlay."""
+        """Get a frame from camera with face and hand detection overlay."""
+
         if use_vision_camera:
             ret, frame = self.vision.cap.read()
         else:
@@ -88,9 +107,10 @@ class CameraView:
         
         if not use_vision_camera:
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = self.face_detection.process(rgb_frame)
             
-            current_faces = len(results.detections) if results.detections else 0
+            face_results = self.face_detection.process(rgb_frame)
+            
+            current_faces = len(face_results.detections) if face_results.detections else 0
             
             if current_faces > self.faces_present:
                 self.vision.emit("face_appeared", {
@@ -103,9 +123,9 @@ class CameraView:
                     "current_faces": current_faces
                 })
             
-            if results.detections:
+            if face_results.detections:
                 faces_data = []
-                for idx, detection in enumerate(results.detections):
+                for idx, detection in enumerate(face_results.detections):
                     self.draw_detection_with_label(frame, detection, idx)
                     bbox = detection.location_data.relative_bounding_box
                     faces_data.append({
@@ -118,6 +138,27 @@ class CameraView:
                 self.vision.emit("faces_tracked", {
                     "total_faces": current_faces,
                     "faces": faces_data
+                })
+            
+            hand_results = self.hands.process(rgb_frame)
+            
+            if hand_results.multi_hand_landmarks:
+                hands_data = []
+                for hand_landmarks in hand_results.multi_hand_landmarks:
+                    self.draw_hand_landmarks(frame, hand_landmarks)
+                    
+                    h, w, _ = frame.shape
+                    cx = sum(lm.x for lm in hand_landmarks.landmark) / len(hand_landmarks.landmark)
+                    cy = sum(lm.y for lm in hand_landmarks.landmark) / len(hand_landmarks.landmark)
+                    
+                    hands_data.append({
+                        "x": cx,
+                        "y": cy
+                    })
+                
+                self.vision.emit("hands_tracked", {
+                    "total_hands": len(hand_results.multi_hand_landmarks),
+                    "hands": hands_data
                 })
             
             self.faces_present = current_faces
@@ -149,4 +190,5 @@ class CameraView:
         """Release camera resources and close windows."""
         
         self.left_display_cap.release()
+        self.destroy_window() 
         self.destroy_window() 
