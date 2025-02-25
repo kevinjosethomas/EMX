@@ -5,8 +5,8 @@ import asyncio
 import sounddevice as sd
 import concurrent.futures
 from pydub import AudioSegment
-from pyee.asyncio import AsyncIOEventEmitter
 from .audio import CHANNELS, SAMPLE_RATE
+from pyee.asyncio import AsyncIOEventEmitter
 
 
 class AudioRecorder(AsyncIOEventEmitter):
@@ -38,14 +38,12 @@ class AudioRecorder(AsyncIOEventEmitter):
         self.should_record = asyncio.Event()
         self.debug = debug
         self.debug_mic_buffer = io.BytesIO() if debug else None
-        self.input_sample_rate = SAMPLE_RATE  # Will be updated when starting
+        self.input_sample_rate = SAMPLE_RATE
 
-        # Create thread pool for audio capture
         self.audio_thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="audio_recorder"
         )
 
-        # Try to set high priority for audio thread if possible
         if hasattr(os, "sched_get_priority_max"):
             try:
                 audio_priority = os.sched_get_priority_max(os.SCHED_FIFO)
@@ -75,7 +73,6 @@ class AudioRecorder(AsyncIOEventEmitter):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        # Initialize microphone
         device = self.microphone_id if self.microphone_id is not None else None
         device_info = sd.query_devices(device, "input")
         actual_input_sr = int(device_info["default_samplerate"])
@@ -110,7 +107,6 @@ class AudioRecorder(AsyncIOEventEmitter):
                     time.sleep(0.1)
                     continue
 
-                # Process audio in main thread
                 asyncio.run_coroutine_threadsafe(
                     self._process_captured_audio(data), self._main_loop
                 )
@@ -143,7 +139,6 @@ class AudioRecorder(AsyncIOEventEmitter):
         if self.debug and self.debug_mic_buffer is not None:
             self.debug_mic_buffer.write(audio_bytes)
 
-        # Emit audio_captured event with processed audio
         self.emit(
             "audio_captured",
             {"audio_bytes": audio_bytes, "sample_rate": SAMPLE_RATE},

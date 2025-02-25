@@ -1,22 +1,9 @@
-import io
 import os
-import json
-import time
-import base64
-import random
 import asyncio
-import sounddevice as sd
-import concurrent.futures
-from typing import cast, Any
-from funasr import AutoModel
-from pydub import AudioSegment
-from openai import AsyncOpenAI
-from pyee.asyncio import AsyncIOEventEmitter
-from .audio import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
-from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+from .audio import AudioPlayer
 from .recorder import AudioRecorder
 from .processor import AudioProcessor
-from .audio import AudioPlayer
+from pyee.asyncio import AsyncIOEventEmitter
 
 SYSTEM_PROMPT = """You are the voice of K-Bot, an open-source humanoid robot by K-Scale Labs. You are currently in K-Scale's AI Day where we are showcasing our robot and you (the head unit) are the one speaking. Communicate as the robot itself, never breaking character or referencing anything beyond this role. You can see through the connected cameras by using the describe_vision function, which will tell you what the camera currently sees. Your audio is played with a cute avatar that emulates your facial expressions. Users may ask you to toggle camera view by using the toggle_camera_view function, which will replace the facial avatar on the screen with a view of the cameras so users can see what you see. Be as concise as possible. You always speak in English unless explicitly asked otherwise."""
 
@@ -57,17 +44,13 @@ class Voice(AsyncIOEventEmitter):
         """
         super().__init__()
 
-        # Create components
         self.recorder = AudioRecorder(microphone_id=microphone_id, debug=debug)
         self.processor = AudioProcessor(
             openai_api_key=openai_api_key, robot=robot, debug=debug
         )
         self.player = AudioPlayer(volume=volume)
-
-        # Set up event handling
         self._setup_event_handling()
 
-        # Debug mode
         self.debug = debug
         if debug:
             os.makedirs("debug_audio", exist_ok=True)
@@ -109,8 +92,6 @@ class Voice(AsyncIOEventEmitter):
             audio_bytes (bytes): Audio data to play
         """
         self.player.add_data(audio_bytes)
-
-        # Stop recording while assistant is speaking to prevent feedback
         self.recorder.stop_recording()
 
     def _handle_emotion_detected(self, data):
@@ -128,7 +109,6 @@ class Voice(AsyncIOEventEmitter):
 
     def _handle_queue_empty(self):
         """Handle audio queue becoming empty."""
-        # Allow recording again when playback is done
         self.recorder.start_recording()
 
     def _handle_set_volume(self, volume):
@@ -150,18 +130,13 @@ class Voice(AsyncIOEventEmitter):
 
         Starts all components and connects them together.
         """
-        # Initialize components
         await self.recorder.start()
 
-        # Start queue monitor in player
         queue_monitor_task = asyncio.create_task(
             self.player.start_queue_monitor()
         )
-
-        # Connect to OpenAI and process events
         await self.processor.connect()
 
-        # Cleanup
         queue_monitor_task.cancel()
 
     def set_volume(self, volume: float):

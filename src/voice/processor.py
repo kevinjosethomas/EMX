@@ -1,16 +1,14 @@
 import io
 import os
+import time
 import base64
 import random
-import json
-import time
 import asyncio
-from typing import Any, Dict, Optional
-from pyee.asyncio import AsyncIOEventEmitter
 from funasr import AutoModel
 from pydub import AudioSegment
 from openai import AsyncOpenAI
-from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+from .tools import ToolManager
+from pyee.asyncio import AsyncIOEventEmitter
 
 # OpenAI system prompt
 SYSTEM_PROMPT = """You are the voice of K-Bot, an open-source humanoid robot by K-Scale Labs. You are currently in K-Scale's AI Day where we are showcasing our robot and you (the head unit) are the one speaking. Communicate as the robot itself, never breaking character or referencing anything beyond this role. You can see through the connected cameras by using the describe_vision function, which will tell you what the camera currently sees. Your audio is played with a cute avatar that emulates your facial expressions. Users may ask you to toggle camera view by using the toggle_camera_view function, which will replace the facial avatar on the screen with a view of the cameras so users can see what you see. Be as concise as possible. You always speak in English unless explicitly asked otherwise."""
@@ -35,11 +33,13 @@ class AudioProcessor(AsyncIOEventEmitter):
         chunk_counter (int): Tracks chunks for emotion analysis
         last_audio_item_id (str): ID of last processed audio chunk
         debug (bool): Enable debug mode
+        tool_manager (ToolManager): Manages LLM tools
 
     Events emitted:
         - audio_to_play: When audio is ready to be played
         - emotion_detected: When emotion is detected in the audio
         - processing_complete: When processing is complete
+        - set_volume: When the volume should be changed
     """
 
     def __init__(self, openai_api_key, robot=None, debug=False):
@@ -57,6 +57,14 @@ class AudioProcessor(AsyncIOEventEmitter):
         self.robot = robot
         self.connected = asyncio.Event()
         self.debug = debug
+
+        # Create tool manager
+        self.tool_manager = ToolManager(robot=robot)
+
+        # Forward tool events to processor events
+        self.tool_manager.on(
+            "set_volume", lambda volume: self.emit("set_volume", volume)
+        )
 
         # Emotion analysis setup
         self.emotion_buffer = io.BytesIO()
@@ -90,6 +98,9 @@ class AudioProcessor(AsyncIOEventEmitter):
             self.connection = conn
             self.connected.set()
 
+            # Set connection in tool manager
+            self.tool_manager.set_connection(conn)
+
             print("Connected to OpenAI")
 
             # Process API events
@@ -104,6 +115,7 @@ class AudioProcessor(AsyncIOEventEmitter):
                 elif event.type == "response.done":
                     self.emit("processing_complete")
                 elif event.type == "response.function_call_arguments.done":
+                    # Use the ToolManager to handle tool calls
                     await self._handle_tool_call(conn, event)
                     await conn.response.create()
                 elif event.type == "error":
@@ -117,48 +129,8 @@ class AudioProcessor(AsyncIOEventEmitter):
         """
         self.session = conn.session
 
-        # Define tools available to the model
-        tools = [
-            {
-                "type": "function",
-                "name": "describe_vision",
-                "description": "Use this function to see through your camera and understand what's in front of you. This is how you perceive the visual world around you. Call this whenever you need to know what you can see or when asked about your surroundings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-            {
-                "type": "function",
-                "name": "toggle_camera_view",
-                "description": "Toggle between showing the robot's camera feeds and its normal face display",
-                "parameters": {"type": "object", "properties": {}},
-            },
-            {
-                "type": "function",
-                "name": "get_current_time",
-                "description": "Get the current time of the day. K-Scale AI day goes from 3pm to 8pm.",
-                "parameters": {"type": "object", "properties": {}},
-            },
-            {
-                "type": "function",
-                "name": "set_volume",
-                "description": "Set the volume of the robot's voice",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "volume": {
-                            "type": "number",
-                            "description": "Volume level between 0.0 (silent) and 1.0 (maximum)",
-                            "minimum": 0.0,
-                            "maximum": 1.0,
-                        }
-                    },
-                    "required": ["volume"],
-                },
-            },
-        ]
+        # Get tool definitions from the tool manager
+        tools = self.tool_manager.get_tool_definitions()
 
         # Update session with voice settings
         await conn.session.update(
@@ -360,45 +332,8 @@ class AudioProcessor(AsyncIOEventEmitter):
             conn (AsyncRealtimeConnection): Active connection to OpenAI API
             event: Tool call event
         """
-        if event.name == "describe_vision":
-            description = await self.robot.vision.get_scene_description()
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": description,
-                }
-            )
-        elif event.name == "toggle_camera_view":
-            await self.robot.toggle_camera_view()
-            state = "on" if self.robot.vision.show_camera_view else "off"
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": f"Camera view is now {state}. You can now {'see through my eyes' if state == 'on' else 'see my face again'}.",
-                }
-            )
-        elif event.name == "get_current_time":
-            current_time = time.strftime("%I:%M %p")
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": f"The current time is {current_time}. K-Scale AI day goes from 3pm to 8pm.",
-                }
-            )
-        elif event.name == "set_volume":
-            args = json.loads(event.arguments)
-            volume = float(args["volume"])
-            self.emit("set_volume", volume)
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": f"Volume has been set to {int(volume * 100)}%",
-                }
-            )
+        # Delegate to the ToolManager
+        await self.tool_manager.handle_tool_call(event)
 
     def _get_timestamp_filename(self, prefix, emotion=None):
         """Generate a timestamp-based filename for debug audio.
