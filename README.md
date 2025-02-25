@@ -100,7 +100,7 @@ source venv/bin/activate  # Linux/Mac
 python3 -m pip install -r requirements.txt
 ```
 
-For Linux/Raspberry Pi, you will need to download ``pyaudio`` separately:
+For Linux/Raspberry Pi, you will need to download `pyaudio` separately:
 
 ```
 sudo apt-get update
@@ -116,23 +116,28 @@ OPENAI_API_KEY=your_api_key_string
 ```
 
 If you're on a Raspberry Pi, you should also do the following:
-###  Allow Streaming of Cameras
+
+### Allow Streaming of Cameras
+
 ```
 # Download the v4l2loopback package
 sudo apt-get install -y v4l2loopback-dkms
 ```
 
 Add the following to `/etc/modules-load.d/v4l2loopback.conf`:
+
 ```
 v4l2loopback
 ```
 
 Add the following to `/etc/modprobe.d/v4l2loopback.conf`:
+
 ```
 options v4l2loopback video_nr=45,46
 ```
 
 And add the following to `.config/openbox/autostart.sh`:
+
 ```
 # Start the cameras on boot
 gst-launch-1.0 libcamerasrc camera_name=/base/axi/pcie@120000/rp1/i2c@88000/ov5647@36 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=/dev/video45 >/dev/null &
@@ -148,15 +153,124 @@ Develop a basic script using the robot API as shown above, and run it:
 `python3 bot.py`
 
 If you get an error like this:
+
 ```
-qt.qpa.xcb: could not connect to display 
+qt.qpa.xcb: could not connect to display
 qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/dpsh/EMX/venv/lib/python3.10/site-packages/cv2/qt/plugins" even though it was found.
 This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
 
 Available platform plugins are: xcb.
 ```
+
 Run the following command:
+
 ```
 export DISPLAY=:0
 ```
+
 ---
+
+# K-Emotion
+
+A robot system with emotional intelligence capabilities, featuring computer vision, voice interaction, and expressive animations.
+
+## Configuration System
+
+K-Emotion includes a comprehensive configuration system that automatically detects and saves application settings to make setup easier.
+
+### First-time Setup
+
+The first time you run the application, it will automatically:
+
+1. Detect all available microphones, cameras, and speakers
+2. Select default devices
+3. Create a `config.json` file in the root directory with these settings
+
+### Modifying Configuration
+
+You can modify your configuration in two ways:
+
+1. **Interactive Configuration Tool**:
+
+   ```bash
+   python generate_config.py
+   ```
+
+   This interactive tool will guide you through configuring:
+
+   - Hardware devices (microphone, camera, speakers)
+   - Voice settings (volume)
+   - Vision settings (face detection parameters)
+   - Emotion settings (animation speed, fullscreen, idle timeout)
+   - General settings (debug mode, environment)
+
+2. **Direct Editing**:
+   You can directly edit the `config.json` file in your text editor. The file has a simple structure:
+   ```json
+   {
+     "microphone_id": 1,
+     "camera_id": 0,
+     "speaker_id": 5,
+     "volume": 0.15,
+     "face_detection_confidence": 0.5,
+     "face_tracking_threshold": 0.3,
+     "fullscreen": false,
+     "animation_speed": 1.0,
+     "idle_timeout": 5.0,
+     "debug": false,
+     "environment": "default"
+   }
+   ```
+
+### Configuration Options
+
+#### Device Settings
+
+- **microphone_id**: ID of the microphone to use for voice input
+- **camera_id**: ID of the camera to use for computer vision
+- **speaker_id**: ID of the speaker device to use for audio output
+
+#### Voice Settings
+
+- **volume**: Default volume level (0.0 to 1.0)
+
+#### Vision Settings
+
+- **face_detection_confidence**: Minimum confidence threshold for face detection (0.0 to 1.0)
+- **face_tracking_threshold**: Minimum confidence for tracking faces (0.0 to 1.0)
+
+#### Emotion Settings
+
+- **fullscreen**: Whether to run in fullscreen mode (true/false)
+- **animation_speed**: Speed multiplier for animations (0.1 to 3.0)
+- **idle_timeout**: Time in seconds before idle animations start (1.0 to 60.0)
+
+#### General Settings
+
+- **debug**: Enable debug mode (true/false)
+- **environment**: Environment type ("default" or "pi" for Raspberry Pi)
+
+## Running the Application
+
+```bash
+python main.py
+```
+
+On first run, the application will create a configuration file if it doesn't exist. You can modify this file at any time to change your settings.
+
+## Requirements
+
+- Python 3.8+
+- OpenCV
+- SoundDevice
+- PyAudio
+- OpenAI API key
+
+## Development
+
+For development or to modify the codebase:
+
+1. Clone the repository
+2. Install dependencies: `pip install -r requirements.txt`
+3. Run the configuration tool: `python generate_config.py`
+4. Run the application: `python main.py`

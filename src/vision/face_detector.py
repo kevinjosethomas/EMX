@@ -12,18 +12,22 @@ class FaceDetector(BaseDetector):
         faces_tracked: Every frame with face position data for all faces
     """
 
-    def __init__(self, min_detection_confidence=0.8, debug=False):
+    def __init__(
+        self, detection_confidence=0.5, tracking_threshold=0.3, debug=False
+    ):
         """Initialize the face detector.
 
         Args:
-            min_detection_confidence (float): Minimum confidence value ([0.0, 1.0]) for face detection.
+            detection_confidence (float): Minimum confidence value ([0.0, 1.0]) for face detection.
+            tracking_threshold (float): Minimum confidence to continue tracking a face.
             debug (bool): Whether to enable debug mode
         """
 
         super().__init__()
-        self.min_detection_confidence = min_detection_confidence
+        self.min_detection_confidence = detection_confidence
+        self.tracking_threshold = tracking_threshold
         self.face_detection = None
-        self.faces_present = 0 
+        self.faces_present = 0
         self.debug = debug
         self.mp_drawing = mp.solutions.drawing_utils
 
@@ -35,7 +39,7 @@ class FaceDetector(BaseDetector):
 
         self.face_detection = mp.solutions.face_detection.FaceDetection(
             min_detection_confidence=self.min_detection_confidence,
-            model_selection=1
+            model_selection=1,
         )
 
     async def cleanup(self):
@@ -60,43 +64,48 @@ class FaceDetector(BaseDetector):
         """
 
         results = self.face_detection.process(frame)
-        
+
         faces_data = []
         current_faces = 0
 
         if results.detections:
             current_faces = len(results.detections)
-            
+
             for detection in results.detections:
                 bbox = detection.location_data.relative_bounding_box
                 face_data = {
                     "x": bbox.xmin + bbox.width / 2,
                     "y": bbox.ymin + bbox.height / 2,
                     "size": bbox.width * bbox.height,
-                    "confidence": detection.score[0]
+                    "confidence": detection.score[0],
                 }
                 faces_data.append(face_data)
 
             if current_faces > self.faces_present:
-                self.emit("face_appeared", {
-                    "total_faces": current_faces,
-                    "new_faces": current_faces - self.faces_present
-                })
+                self.emit(
+                    "face_appeared",
+                    {
+                        "total_faces": current_faces,
+                        "new_faces": current_faces - self.faces_present,
+                    },
+                )
 
             if self.debug:
                 debug_frame = frame.copy()
                 for detection in results.detections:
                     self.mp_drawing.draw_detection(debug_frame, detection)
-                
+
                 height, width = debug_frame.shape[:2]
                 max_height = 600
                 max_width = 1024
-                
+
                 if height > max_height or width > max_width:
-                    scale = min(max_height/height, max_width/width)
+                    scale = min(max_height / height, max_width / width)
                     new_width = int(width * scale)
                     new_height = int(height * scale)
-                    debug_frame = cv2.resize(debug_frame, (new_width, new_height))
+                    debug_frame = cv2.resize(
+                        debug_frame, (new_width, new_height)
+                    )
 
                 cv2.imshow(
                     "Face Detection Debug",
@@ -104,15 +113,18 @@ class FaceDetector(BaseDetector):
                 )
                 cv2.waitKey(1)
 
-            self.emit("faces_tracked", {
-                "total_faces": current_faces,
-                "faces": faces_data
-            })
+            self.emit(
+                "faces_tracked",
+                {"total_faces": current_faces, "faces": faces_data},
+            )
 
         if current_faces < self.faces_present:
-            self.emit("face_disappeared", {
-                "previous_faces": self.faces_present,
-                "current_faces": current_faces
-            })
-            
+            self.emit(
+                "face_disappeared",
+                {
+                    "previous_faces": self.faces_present,
+                    "current_faces": current_faces,
+                },
+            )
+
         self.faces_present = current_faces

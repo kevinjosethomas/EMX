@@ -73,8 +73,29 @@ class AudioRecorder(AsyncIOEventEmitter):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        device = self.microphone_id if self.microphone_id is not None else None
-        device_info = sd.query_devices(device, "input")
+        devices = sd.query_devices()
+        input_devices = [d for d in devices if d["max_input_channels"] > 0]
+        print("Available input devices:")
+        for d in input_devices:
+            print(f"  ID: {d['index']}, Name: {d['name']}")
+
+        device = self.microphone_id
+        try:
+            if device is not None:
+                device_info = sd.query_devices(device, "input")
+                print(f"Using specified input device: {device_info['name']}")
+            else:
+                device_info = sd.query_devices(None, "input")
+                device = device_info["index"]
+                print(f"Using default input device: {device_info['name']}")
+        except Exception as e:
+            print(f"Error using specified input device {device}: {e}")
+            device_info = sd.query_devices(None, "input")
+            device = device_info["index"]
+            print(
+                f"Falling back to default input device: {device_info['name']}"
+            )
+
         actual_input_sr = int(device_info["default_samplerate"])
         self.input_sample_rate = actual_input_sr
         print(
@@ -122,7 +143,6 @@ class AudioRecorder(AsyncIOEventEmitter):
         """
         raw_bytes = data.tobytes()
 
-        # Resample if needed to match target sample rate
         if self.input_sample_rate != SAMPLE_RATE:
             segment = AudioSegment(
                 data=raw_bytes,
@@ -135,7 +155,6 @@ class AudioRecorder(AsyncIOEventEmitter):
         else:
             audio_bytes = raw_bytes
 
-        # Save debug audio if enabled
         if self.debug and self.debug_mic_buffer is not None:
             self.debug_mic_buffer.write(audio_bytes)
 

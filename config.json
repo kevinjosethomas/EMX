@@ -1,0 +1,13 @@
+{
+    "microphone_id": 4,
+    "camera_id": 2,
+    "speaker_id": 5,
+    "volume": 0.3,
+    "face_detection_confidence": 0.8,
+    "face_tracking_threshold": 0.8,
+    "fullscreen": false,
+    "animation_speed": 1.0,
+    "idle_timeout": 10.0,
+    "debug": false,
+    "environment": "default"
+}

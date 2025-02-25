@@ -18,12 +18,23 @@ class Vision(AsyncIOEventEmitter):
 
     def __init__(
         self,
-        camera_id="1",
         debug=False,
         openai_api_key=None,
         environment="default",
+        config=None,
     ):
         super().__init__()
+        if config is None:
+            from src.config import get_config
+
+            config = get_config()
+
+        camera_id = config.get("camera_id", 0)
+        face_detection_confidence = config.get(
+            "face_detection_confidence", 0.5
+        )
+        face_tracking_threshold = config.get("face_tracking_threshold", 0.3)
+
         self.camera_id = camera_id
         self.debug = debug
         self.environment = environment
@@ -33,7 +44,12 @@ class Vision(AsyncIOEventEmitter):
         self.camera_view = None
         self.show_camera_view = False
 
-        self.face_detector = FaceDetector(debug=debug)
+        self.face_detector = FaceDetector(
+            debug=debug,
+            detection_confidence=face_detection_confidence,
+            tracking_threshold=face_tracking_threshold,
+        )
+
         self.detectors.extend([self.face_detector])
         self.openai_client = AsyncOpenAI(api_key=openai_api_key)
 

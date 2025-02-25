@@ -58,21 +58,17 @@ class AudioProcessor(AsyncIOEventEmitter):
         self.connected = asyncio.Event()
         self.debug = debug
 
-        # Create tool manager
         self.tool_manager = ToolManager(robot=robot)
 
-        # Forward tool events to processor events
         self.tool_manager.on(
             "set_volume", lambda volume: self.emit("set_volume", volume)
         )
 
-        # Emotion analysis setup
         self.emotion_buffer = io.BytesIO()
         self.emotion_chunk_size = 5
         self.chunk_counter = 0
         self.last_audio_item_id = None
 
-        # Initialize emotion model
         model_path = "iic/emotion2vec_plus_base"
         self.emotion_model = AutoModel(
             model=model_path,
@@ -84,7 +80,6 @@ class AudioProcessor(AsyncIOEventEmitter):
             hub="hf",
         )
 
-        # Create debug directories if needed
         if debug:
             os.makedirs("debug_audio", exist_ok=True)
             os.makedirs("debug_audio/input", exist_ok=True)
@@ -98,12 +93,10 @@ class AudioProcessor(AsyncIOEventEmitter):
             self.connection = conn
             self.connected.set()
 
-            # Set connection in tool manager
             self.tool_manager.set_connection(conn)
 
             print("Connected to OpenAI")
 
-            # Process API events
             async for event in conn:
                 if event.type == "session.created":
                     print("Session created")
@@ -115,7 +108,6 @@ class AudioProcessor(AsyncIOEventEmitter):
                 elif event.type == "response.done":
                     self.emit("processing_complete")
                 elif event.type == "response.function_call_arguments.done":
-                    # Use the ToolManager to handle tool calls
                     await self._handle_tool_call(conn, event)
                     await conn.response.create()
                 elif event.type == "error":
@@ -129,10 +121,8 @@ class AudioProcessor(AsyncIOEventEmitter):
         """
         self.session = conn.session
 
-        # Get tool definitions from the tool manager
         tools = self.tool_manager.get_tool_definitions()
 
-        # Update session with voice settings
         await conn.session.update(
             session={
                 "voice": "ash",
@@ -145,7 +135,6 @@ class AudioProcessor(AsyncIOEventEmitter):
             }
         )
 
-        # Signal that session is ready to accept input
         self.emit("session_ready")
 
     async def process_audio(self, audio_bytes):
@@ -168,14 +157,11 @@ class AudioProcessor(AsyncIOEventEmitter):
         Args:
             event: OpenAI audio delta event with audio data
         """
-        # Reset buffers if this is a new audio sequence
         if event.item_id != self.last_audio_item_id:
             self._reset_buffers(event.item_id)
 
-        # Decode audio data
         audio_bytes = base64.b64decode(event.delta)
 
-        # Process for emotion and playback
         await self._process_audio_chunk(audio_bytes)
 
     def _reset_buffers(self, item_id):
@@ -194,22 +180,19 @@ class AudioProcessor(AsyncIOEventEmitter):
         Args:
             audio_bytes (bytes): Raw audio data
         """
-        # Accumulate audio for emotion analysis
         self.emotion_buffer.write(audio_bytes)
         self.chunk_counter += 1
 
-        # Analyze emotion if we have enough chunks
         if self.chunk_counter >= self.emotion_chunk_size:
             await self._analyze_emotion_buffer()
             self._reset_emotion_buffer()
 
-        # Emit audio for playback
         self.emit("audio_to_play", audio_bytes)
 
     async def _analyze_emotion_buffer(self):
         """Analyze emotion in accumulated audio buffer and emit results."""
         emotion_audio = self.emotion_buffer.getvalue()
-        audio_duration = len(emotion_audio) / (24000 * 2)  # Calculate duration
+        audio_duration = len(emotion_audio) / (24000 * 2)
 
         emotion_result = await self.analyze_audio_emotion(emotion_audio)
         if emotion_result:
@@ -217,7 +200,6 @@ class AudioProcessor(AsyncIOEventEmitter):
                 emotion_result[0]["scores"]
             )
 
-            # Emit emotion event
             self.emit(
                 "emotion_detected",
                 {
@@ -226,7 +208,6 @@ class AudioProcessor(AsyncIOEventEmitter):
                 },
             )
 
-            # Save debug audio if enabled
             if self.debug:
                 try:
                     filename = self._get_timestamp_filename(
@@ -269,23 +250,18 @@ class AudioProcessor(AsyncIOEventEmitter):
             "neutral",  # unknown
         ]
 
-        # Apply adjustments to favor more expressive emotions
         adjusted_scores = scores.copy()
 
-        # Reduce neutral weights
         neutral_indices = [4, 5, 8]
         for idx in neutral_indices:
             adjusted_scores[idx] *= 0.9
 
-        # Boost expressive emotions
         expressive_indices = [2, 3, 6, 7]
         for idx in expressive_indices:
             adjusted_scores[idx] *= 1.3
 
-        # Reduce anger weight
         adjusted_scores[0] *= 0.2
 
-        # Add randomness
         adjusted_scores = [s + random.uniform(0, 0.1) for s in adjusted_scores]
 
         return emotion_labels[adjusted_scores.index(max(adjusted_scores))]
@@ -302,16 +278,13 @@ class AudioProcessor(AsyncIOEventEmitter):
         try:
             print("Analyzing emotion")
 
-            # Resample to 16kHz for emotion model
             audio = AudioSegment(
                 data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
             ).set_frame_rate(16000)
 
-            # Export to WAV format
             wav_buffer = io.BytesIO()
             audio.export(wav_buffer, format="wav")
 
-            # Analyze with FunASR
             result = self.emotion_model.generate(
                 wav_buffer.getvalue(),
                 output_dir=None,
@@ -332,7 +305,6 @@ class AudioProcessor(AsyncIOEventEmitter):
             conn (AsyncRealtimeConnection): Active connection to OpenAI API
             event: Tool call event
         """
-        # Delegate to the ToolManager
         await self.tool_manager.handle_tool_call(event)
 
     def _get_timestamp_filename(self, prefix, emotion=None):

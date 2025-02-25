@@ -29,26 +29,34 @@ class Voice(AsyncIOEventEmitter):
         self,
         openai_api_key,
         robot=None,
-        microphone_id=None,
-        debug=False,
-        volume=0.15,
+        config=None,
     ):
         """Initialize the Voice system.
 
         Args:
             openai_api_key (str): API key for OpenAI
             robot (Robot, optional): Reference to main robot instance
-            microphone_id (str, optional): Specific microphone device ID
-            debug (bool, optional): Enable debug mode
-            volume (float, optional): Initial playback volume
+            config (dict, optional): Configuration dictionary (if None, loads from file)
         """
         super().__init__()
+
+        if config is None:
+            from src.config import get_config
+
+            self.config = get_config()
+        else:
+            self.config = config
+
+        microphone_id = self.config.get("microphone_id")
+        speaker_id = self.config.get("speaker_id")
+        volume = self.config.get("volume", 0.15)
+        debug = self.config.get("debug", False)
 
         self.recorder = AudioRecorder(microphone_id=microphone_id, debug=debug)
         self.processor = AudioProcessor(
             openai_api_key=openai_api_key, robot=robot, debug=debug
         )
-        self.player = AudioPlayer(volume=volume)
+        self.player = AudioPlayer(device_id=speaker_id, volume=volume)
         self._setup_event_handling()
 
         self.debug = debug
@@ -146,3 +154,8 @@ class Voice(AsyncIOEventEmitter):
             volume (float): Volume level between 0.0 and 1.0
         """
         self.player.set_volume(volume)
+
+        self.config["volume"] = volume
+        from src.config import save_config
+
+        save_config(self.config)

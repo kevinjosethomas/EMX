@@ -10,10 +10,9 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "default")
 
 robot = Robot(
     openai_api_key=os.getenv("OPENAI_API_KEY"),
-    debug=False,
-    fullscreen=False,
-    environment=ENVIRONMENT
+    config=None,
 )
+
 
 @robot.event("ready")
 async def on_ready():

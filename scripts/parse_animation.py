@@ -39,7 +39,6 @@ def get_coordinates(use_offset=False):
             try:
                 x_offset = float(input("Enter x-axis offset for right eye: "))
                 if -1024 <= x_offset <= 1024:
-                    # Apply offset to left eye coordinates and normalize
                     for i, [x, y] in enumerate(left_eye_points):
                         new_x = x + x_offset
                         if 0 <= new_x <= 1024:

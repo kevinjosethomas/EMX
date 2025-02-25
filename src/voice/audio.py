@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 This code is directly ported from https://github.com/openai/openai-python/blob/main/examples/realtime/audio_util.py
 """
@@ -9,7 +11,6 @@ import threading
 import numpy as np
 import sounddevice as sd
 from pydub import AudioSegment
-from __future__ import annotations
 from pyee.asyncio import AsyncIOEventEmitter
 
 CHANNELS = 1
@@ -50,6 +51,7 @@ class AudioPlayer(AsyncIOEventEmitter):
         output_rate (int): Sample rate of output device
         stream (sd.OutputStream): Audio output stream
         playing (bool): Whether audio is currently playing
+        device_id (int): ID of the output device to use
 
     Events emitted:
         - queue_empty: When the audio queue becomes empty
@@ -57,25 +59,24 @@ class AudioPlayer(AsyncIOEventEmitter):
         - playback_stopped: When playback stops
     """
 
-    def __init__(self, volume=0.15):
+    def __init__(self, device_id=None, volume=0.15):
         """Initialize the audio player.
 
         Args:
+            device_id (int, optional): ID of the output device to use. Defaults to None (system default).
             volume (float, optional): Initial volume level (0.0 to 1.0). Defaults to 0.15.
         """
         super().__init__()
 
-        # Queue and synchronization
         self.queue = []
         self.lock = threading.Lock()
         self.volume = max(0.0, min(1.0, volume))
         self.buffer_size = 4096
         self.min_buffer_fill = 0.5
+        self.device_id = device_id
 
-        # Device setup
         self._setup_audio_device()
 
-        # Start empty queue check task
         self._queue_check_task = None
 
     def _setup_audio_device(self):
@@ -85,11 +86,28 @@ class AudioPlayer(AsyncIOEventEmitter):
         print(devices)
 
         try:
-            default_device = sd.query_devices(kind="output")
-            device_id = default_device["index"]
-            print(f"Using output device: {default_device['name']}")
+            if self.device_id is not None:
+                try:
+                    device = sd.query_devices(self.device_id)
+                    device_id = self.device_id
+                    print(f"Using specified output device: {device['name']}")
+                except Exception as e:
+                    print(
+                        f"Warning: Could not use specified device ID {self.device_id}: {e}"
+                    )
+                    default_device = sd.query_devices(kind="output")
+                    device_id = default_device["index"]
+                    print(
+                        f"Falling back to default output device: {default_device['name']}"
+                    )
+            else:
 
-            supported_rates = default_device.get("default_samplerate")
+                default_device = sd.query_devices(kind="output")
+                device_id = default_device["index"]
+                print(f"Using default output device: {default_device['name']}")
+
+            device = sd.query_devices(device_id)
+            supported_rates = device.get("default_samplerate")
             print(f"Device default sample rate: {supported_rates}")
 
             self.input_rate = SAMPLE_RATE
@@ -137,7 +155,6 @@ class AudioPlayer(AsyncIOEventEmitter):
         with self.lock:
             data = np.empty(0, dtype=np.int16)
 
-            # Get next items from queue to fill the requested frames
             while len(data) < frames and len(self.queue) > 0:
                 item = self.queue.pop(0)
                 frames_needed = frames - len(data)
@@ -145,27 +162,19 @@ class AudioPlayer(AsyncIOEventEmitter):
                 if len(item) > frames_needed:
                     self.queue.insert(0, item[frames_needed:])
 
-            # Track how much audio we've processed
             self._frame_count += len(data)
 
-            # Fill remaining space with silence if queue is empty
             if len(data) < frames:
                 data = np.concatenate(
                     (data, np.zeros(frames - len(data), dtype=np.int16))
                 )
 
-                # Signal queue is empty after filling buffer
-                # We need to emit the event outside the lock
                 if len(self.queue) == 0:
-                    # We can't directly emit here since we're in a callback
-                    # Schedule it to run in the event loop
                     self._emit_queue_empty_soon = True
 
-            # Apply volume
             data = (data * self.volume).astype(np.int16)
 
-        # Fill the output buffer
-        outdata[:] = data.reshape(-1, 1)
+            outdata[:] = data.reshape(-1, 1)
 
     async def start_queue_monitor(self):
         """Start monitoring the queue for empty state.
@@ -177,7 +186,6 @@ class AudioPlayer(AsyncIOEventEmitter):
         while True:
             await asyncio.sleep(0.1)
 
-            # Check if we need to emit queue_empty
             if getattr(self, "_emit_queue_empty_soon", False):
                 self._emit_queue_empty_soon = False
                 self.emit("queue_empty")
@@ -192,7 +200,6 @@ class AudioPlayer(AsyncIOEventEmitter):
             return
 
         with self.lock:
-            # Convert incoming audio data
             if self.input_rate != self.output_rate:
                 audio_segment = AudioSegment(
                     data=data,
@@ -205,11 +212,9 @@ class AudioPlayer(AsyncIOEventEmitter):
             else:
                 np_data = np.frombuffer(data, dtype=np.int16)
 
-            # Add to queue
             self.queue.append(np_data)
             buffer_fill = sum(len(x) for x in self.queue) / self.buffer_size
 
-            # Start playback when buffer is sufficiently filled
             if not self.playing and buffer_fill >= self.min_buffer_fill:
                 self.start()
 

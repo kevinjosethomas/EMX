@@ -4,6 +4,7 @@ import asyncio
 from src.voice import Voice
 from src.vision import Vision
 from src.emotion import Emotion
+from src.config import get_config, save_config
 from src.emotion.expressions import Angry, Love, Scared, Happy, Sad, Neutral
 
 
@@ -24,32 +25,37 @@ class Robot:
     wire up handlers to vision, emotion, and voice subsystems.
     """
 
-    def __init__(self, openai_api_key, debug=False, fullscreen=False, environment="default"):
+    def __init__(
+        self,
+        openai_api_key,
+        config=None,
+    ):
         """Initialize robot with vision and emotion engines.
-        
+
         Args:
             openai_api_key (str): OpenAI API key for voice/vision
-            debug (bool): Enable debug mode
-            fullscreen (bool): Run in fullscreen mode
-            environment (str): Type of camera implementation ("default", "pi")
+            config (dict, optional): Configuration dictionary (if None, loads from file)
         """
 
-        self.emotion = Emotion(robot=self,fullscreen=fullscreen)
+        self.config = config if config is not None else get_config()
+
+        debug = self.config.get("debug", False)
+        fullscreen = self.config.get("fullscreen", False)
+        environment = self.config.get("environment", "default")
+        idle_timeout = self.config.get("idle_timeout", 5.0)
+
+        self.emotion = Emotion(robot=self, fullscreen=fullscreen)
         self.vision = Vision(
-            debug=debug, 
-            openai_api_key=openai_api_key,
-            environment=environment
+            debug=debug, openai_api_key=openai_api_key, environment=environment
         )
         self.voice = Voice(
-            openai_api_key=openai_api_key, 
-            robot=self, 
-            debug=debug
+            openai_api_key=openai_api_key, robot=self, config=self.config
         )
         self.event_handlers = {}
 
         self.is_idle = False
         self.last_activity_time = time.time()
-        self.idle_timeout = 5
+        self.idle_timeout = idle_timeout
         self.idle_check_task = None
 
         self.voice.on("_assistant_message", self._handle_voice_emotion)
@@ -119,8 +125,6 @@ class Robot:
             random.uniform(-0.04, 0.04),
             random.uniform(-0.04, 0.04),
         )
-        # random_scale = 1
-        # random_position = (0, 0)
         transition_duration = 0.3
 
         if emotion == "happiness":

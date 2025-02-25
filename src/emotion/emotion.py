@@ -40,25 +40,36 @@ class Emotion(AsyncIOEventEmitter):
         show_camera_view (bool): Flag indicating if camera view is enabled
     """
 
-    def __init__(self, robot=None, width=1024, height=600, fullscreen=False):
+    def __init__(
+        self, robot=None, width=1024, height=600, fullscreen=False, config=None
+    ):
         """Initialize the emotion display system.
 
         Args:
+            robot: Reference to the main robot object
             width (int, optional): Display width in pixels. Defaults to 1024.
             height (int, optional): Display height in pixels. Defaults to 600.
             fullscreen (bool, optional): Whether to use fullscreen. Defaults to False.
-
-        Initializes pygame display, animation state variables, and expression queue.
-        Sets up initial neutral expression and idle manger
+            config (dict, optional): Configuration dictionary (if None, loads from file)
         """
-
         super().__init__()
+
+        if config is None and robot is not None:
+            config = robot.config
+        elif config is None:
+            from src.config import get_config
+
+            config = get_config()
+
+        self.animation_speed = config.get("animation_speed", 1.0)
+        self.fullscreen = fullscreen or config.get("fullscreen", False)
+
         pygame.init()
 
         self.robot = robot
         self.screen_width = width
         self.screen_height = height
-        if fullscreen:
+        if self.fullscreen:
             self.screen = pygame.display.set_mode(
                 (width, height), pygame.FULLSCREEN
             )
@@ -184,12 +195,15 @@ class Emotion(AsyncIOEventEmitter):
 
         while self.running:
             self.screen.fill((30, 30, 30))
-            
+
             if self.show_camera_view:
-                if self.robot and self.robot.vision and self.robot.vision.camera_view:
+                if (
+                    self.robot
+                    and self.robot.vision
+                    and self.robot.vision.camera_view
+                ):
                     self.robot.vision.camera_view.display_frames()
             else:
-                # pygame.display.set_mode((self.screen_width, self.screen_height))
                 current_time = time.perf_counter()
                 elapsed_time = current_time - self.start_time
 
@@ -201,7 +215,6 @@ class Emotion(AsyncIOEventEmitter):
                         self.screen_height,
                     )
 
-                    # Only queue neutral if non-sticky expression completes
                     if (
                         elapsed_time > self.animation_duration
                         and not self.current_expression.sticky
@@ -246,7 +259,6 @@ class Emotion(AsyncIOEventEmitter):
                             for i in range(len(self.previous_vertices))
                         ]
 
-                # Render the eyes
                 left_eye = interpolated_vertices[:12]
                 right_eye = interpolated_vertices[12:]
                 pygame.draw.polygon(self.screen, (255, 255, 255), left_eye)
