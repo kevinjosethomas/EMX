@@ -18,7 +18,7 @@ class Vision(AsyncIOEventEmitter):
 
     def __init__(
         self,
-        camera_id="2",
+        camera_id="1",
         debug=False,
         openai_api_key=None,
         environment="default",
@@ -52,7 +52,8 @@ class Vision(AsyncIOEventEmitter):
             "face_appeared", lambda data: forward_event("face_appeared", data)
         )
         self.face_detector.on(
-            "face_disappeared", lambda data: forward_event("face_disappeared", data)
+            "face_disappeared",
+            lambda data: forward_event("face_disappeared", data),
         )
         self.face_detector.on(
             "faces_tracked", lambda data: forward_event("faces_tracked", data)
@@ -73,7 +74,7 @@ class Vision(AsyncIOEventEmitter):
             self.cap = cv2.VideoCapture("/dev/video45")
             self.camera_view = CameraView(self)
         else:
-            self.cap = cv2.VideoCapture(self.camera_id)
+            self.cap = cv2.VideoCapture(int(self.camera_id))
 
         if not self.cap.isOpened():
             raise RuntimeError(f"Could not open camera {self.camera_id}")

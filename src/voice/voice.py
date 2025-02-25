@@ -14,34 +14,28 @@ from openai import AsyncOpenAI
 from pyee.asyncio import AsyncIOEventEmitter
 from .audio import CHANNELS, SAMPLE_RATE, AudioPlayerAsync
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+from .recorder import AudioRecorder
+from .processor import AudioProcessor
+from .audio import AudioPlayer
 
 SYSTEM_PROMPT = """You are the voice of K-Bot, an open-source humanoid robot by K-Scale Labs. You are currently in K-Scale's AI Day where we are showcasing our robot and you (the head unit) are the one speaking. Communicate as the robot itself, never breaking character or referencing anything beyond this role. You can see through the connected cameras by using the describe_vision function, which will tell you what the camera currently sees. Your audio is played with a cute avatar that emulates your facial expressions. Users may ask you to toggle camera view by using the toggle_camera_view function, which will replace the facial avatar on the screen with a view of the cameras so users can see what you see. Be as concise as possible. You always speak in English unless explicitly asked otherwise."""
 
 
 class Voice(AsyncIOEventEmitter):
-    """Handles real-time voice interactions with OpenAI's API.
+    """Manages voice interactions with OpenAI's API.
 
-    This class manages bidirectional audio streaming between the local microphone
-    and OpenAI's API, including:
-    - Microphone input capture and streaming
-    - Audio playback of API responses
-    - Emotion analysis of assistant responses
-    - Event emission for emotion changes
+    This class coordinates between the audio recorder, processor, and player
+    components to create a complete voice interaction system. It handles the
+    flow of audio data between these components and manages events.
 
     Attributes:
-        client (AsyncOpenAI): OpenAI API client
-        robot (Robot): Reference to the main robot instance
-        microphone_id (str): ID of input microphone device
-        connection (AsyncRealtimeConnection): Active connection to OpenAI
-        session (Session): Current voice session
-        audio_player (AudioPlayerAsync): Audio output manager
-        should_send_audio (Event): Controls when to send mic audio
-        connected (Event): Indicates active API connection
-        last_audio_item_id (str): ID of last processed audio chunk
-        emotion_buffer (BytesIO): Buffer for emotion analysis
-        emotion_chunk_size (int): Number of chunks to analyze together
-        chunk_counter (int): Tracks chunks for emotion analysis
-        emotion_model (AutoModel): Emotion detection model
+        recorder (AudioRecorder): Microphone input capture
+        processor (AudioProcessor): OpenAI API communication and emotion analysis
+        player (AudioPlayer): Audio playback
+
+    Events emitted:
+        - _assistant_message: When emotion is detected in response audio
+        - _assistant_message_end: When response is complete
     """
 
     def __init__(
@@ -52,689 +46,128 @@ class Voice(AsyncIOEventEmitter):
         debug=False,
         volume=0.15,
     ):
-        """Initialize the Voice system with OpenAI API and audio settings.
-
-        This class manages the bidirectional audio stream between local microphone
-        and OpenAI's API, including emotion analysis of responses.
+        """Initialize the Voice system.
 
         Args:
-            openai_api_key (str): API key for OpenAI authentication
-            robot (Robot, optional): Reference to the main robot instance. Defaults to None.
-            microphone_id (str, optional): Specific microphone device ID. Defaults to None.
-            debug (bool, optional): Enable debug audio recording
-            volume (float, optional): Initial volume for audio playback
-
-        Attributes:
-            client: OpenAI API client instance
-            connection: Active connection to OpenAI's realtime API
-            audio_player: Handles async audio playback
-            emotion_model: FunASR model for emotion detection
-            emotion_buffer: Accumulates audio for emotion analysis
-            emotion_chunk_size: Number of chunks to analyze together
+            openai_api_key (str): API key for OpenAI
+            robot (Robot, optional): Reference to main robot instance
+            microphone_id (str, optional): Specific microphone device ID
+            debug (bool, optional): Enable debug mode
+            volume (float, optional): Initial playback volume
         """
-
         super().__init__()
-        self.client = AsyncOpenAI(api_key=openai_api_key)
-        self.robot = robot
-        self.microphone_id = microphone_id
-        self.connection = None
-        self.session = None
-        self.audio_player = AudioPlayerAsync()
-        self.audio_player.set_volume(volume)
-        self.should_send_audio = asyncio.Event()
-        self.connected = asyncio.Event()
-        self.last_audio_item_id = None
 
-        self.emotion_buffer = io.BytesIO()
-        self.emotion_chunk_size = 5
-        self.chunk_counter = 0
-
-        model_path = "iic/emotion2vec_plus_base"
-        self.emotion_model = AutoModel(
-            model=model_path,
-            model_revision="v1.0",
-            device="cpu",
-            offline=True,
-            use_cache=True,
-            disable_update=True,
-            hub="hf",
+        # Create components
+        self.recorder = AudioRecorder(microphone_id=microphone_id, debug=debug)
+        self.processor = AudioProcessor(
+            openai_api_key=openai_api_key, robot=robot, debug=debug
         )
+        self.player = AudioPlayer(volume=volume)
 
+        # Set up event handling
+        self._setup_event_handling()
+
+        # Debug mode
         self.debug = debug
-        self.debug_mic_buffer = io.BytesIO()
-
-        print("Initializing Voice")
-
         if debug:
             os.makedirs("debug_audio", exist_ok=True)
             os.makedirs("debug_audio/input", exist_ok=True)
             os.makedirs("debug_audio/output", exist_ok=True)
 
-        self.audio_thread_pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix="audio_processor"
+    def _setup_event_handling(self):
+        """Set up event handling between components."""
+
+        # Recorder -> Processor
+        self.recorder.on("audio_captured", self._handle_audio_captured)
+
+        # Processor -> Player
+        self.processor.on("audio_to_play", self._handle_audio_to_play)
+        self.processor.on("emotion_detected", self._handle_emotion_detected)
+        self.processor.on(
+            "processing_complete", self._handle_processing_complete
         )
-        
-        if hasattr(os, 'sched_get_priority_max'):
-            try:
-                audio_priority = os.sched_get_priority_max(os.SCHED_FIFO)
-                os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(audio_priority))
-            except Exception as e:
-                print(f"Could not set audio thread priority: {e}")
-
-    async def _handle_session_created(self, conn):
-        """Handle OpenAI session creation and setup.
-
-        Configures the voice session with specific parameters and enables
-        audio transmission.
-
-        Args:
-            conn (AsyncRealtimeConnection): Active connection to OpenAI API
-
-        Settings:
-            voice: "ash" - The voice model to use
-            turn_detection: Server-side VAD with 0.7 threshold
-        """
-
-        self.session = conn.session
-        self.should_send_audio.set()
-
-        tools = [
-            {
-                "type": "function",
-                "name": "describe_vision",
-                "description": "Use this function to see through your camera and understand what's in front of you. This is how you perceive the visual world around you. Call this whenever you need to know what you can see or when asked about your surroundings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-            {
-                "type": "function",
-                "name": "toggle_camera_view",
-                "description": "Toggle between showing the robot's camera feeds and its normal face display",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
-            },
-            {
-                "type": "function",
-                "name": "get_current_time",
-                "description": "Get the current time of the day. K-Scale AI day goes from 3pm to 8pm.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
-            },
-            {
-                "type": "function",
-                "name": "set_volume",
-                "description": "Set the volume of the robot's voice",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "volume": {
-                            "type": "number",
-                            "description": "Volume level between 0.0 (silent) and 1.0 (maximum)",
-                            "minimum": 0.0,
-                            "maximum": 1.0
-                        }
-                    },
-                    "required": ["volume"]
-                }
-            }
-        ]
-
-        await conn.session.update(
-            session={
-                "voice": "ash",
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.7,
-                },
-                "tools": tools,
-                "instructions": SYSTEM_PROMPT,
-            }
+        self.processor.on(
+            "session_ready", lambda: self.recorder.start_recording()
         )
+        self.processor.on("set_volume", self._handle_set_volume)
 
-    async def _handle_audio_delta(self, event):
-        """Process incoming audio chunks from OpenAI's response stream.
+        # Player -> Voice
+        self.player.on("queue_empty", self._handle_queue_empty)
 
-        Manages the audio buffer state and triggers processing of new audio chunks.
-        Pauses microphone input while processing assistant's speech.
-
-        Args:
-            event: OpenAI audio delta event containing:
-                - item_id: Unique ID for the audio sequence
-                - delta: Base64 encoded audio data
-        """
-
-        self.should_send_audio.clear()
-
-        if event.item_id != self.last_audio_item_id:
-            if hasattr(self, "current_utterance_buffer"):
-                try:
-                    filename = self._get_timestamp_filename("input")
-                    audio_data = self.current_utterance_buffer.getvalue()
-                    audio = AudioSegment(
-                        data=audio_data,
-                        sample_width=2,
-                        frame_rate=24000,
-                        channels=1,
-                    )
-                    audio.export(filename, format="wav")
-                    print(f"Saved input audio: {filename}")
-                except Exception as e:
-                    print(f"Error saving input audio: {e}")
-
-            self._reset_buffers(event.item_id)
-
-        audio_bytes = base64.b64decode(event.delta)
-        await self._process_audio_chunk(audio_bytes)
-
-    def _reset_buffers(self, item_id):
-        """Reset audio and emotion analysis buffers for a new utterance.
-
-        Clears both raw audio and emotion analysis buffers and resets the
-        chunk counter when a new audio sequence begins.
+    async def _handle_audio_captured(self, data):
+        """Handle audio captured from microphone.
 
         Args:
-            item_id (str): New audio sequence ID to track
+            data (dict): Contains audio_bytes and sample_rate
         """
+        await self.processor.process_audio(data["audio_bytes"])
 
-        self.audio_buffer = io.BytesIO()
-        self.emotion_buffer = io.BytesIO()
-        self.chunk_counter = 0
-        self.last_audio_item_id = item_id
-
-    async def _process_audio_chunk(self, audio_bytes):
-        """Process an audio chunk for both emotion analysis and playback.
-
-        Accumulates audio data for emotion analysis and sends it to the audio
-        player. When sufficient chunks are collected, triggers emotion analysis.
+    def _handle_audio_to_play(self, audio_bytes):
+        """Handle processed audio to play.
 
         Args:
-            audio_bytes (bytes): Raw PCM audio data at 24kHz, 16-bit, mono
-
-        The method:
-        1. Adds chunk to emotion analysis buffer
-        2. Increments chunk counter
-        3. Triggers emotion analysis if buffer is full
-        4. Sends audio to playback system
+            audio_bytes (bytes): Audio data to play
         """
+        self.player.add_data(audio_bytes)
 
-        self.emotion_buffer.write(audio_bytes)
-        self.chunk_counter += 1
+        # Stop recording while assistant is speaking to prevent feedback
+        self.recorder.stop_recording()
 
-        if self.chunk_counter >= self.emotion_chunk_size:
-            await self._analyze_emotion_buffer()
-            self._reset_emotion_buffer()
-
-        # processed_audio = self._apply_robot_effect(audio_bytes)
-        self.audio_player.add_data(audio_bytes)
-
-    async def _analyze_emotion_buffer(self):
-        """Analyze emotion in accumulated audio buffer and emit results.
-
-        Processes the collected audio buffer to detect emotions using the FunASR model.
-        Calculates audio duration based on buffer size and sample rate.
-        Emits '_assistant_message' event with emotion and duration data.
-
-        The method:
-        1. Gets raw audio data from buffer
-        2. Calculates duration from buffer size and audio format (24kHz, 16-bit)
-        3. Analyzes emotion using FunASR model
-        4. Maps emotion scores to simplified categories
-        5. Emits results to emotion engine
-
-        Event data format:
-            {
-                'emotion': str,  # Simplified emotion category
-                'duration': float  # Audio duration in seconds
-            }
-        """
-
-        emotion_audio = self.emotion_buffer.getvalue()
-        audio_duration = len(emotion_audio) / (24000 * 2)
-
-        emotion = await self.analyze_audio_emotion(emotion_audio)
-        if emotion:
-            detected_emotion = self._get_detected_emotion(emotion[0]["scores"])
-
-            self.emit(
-                "_assistant_message",
-                {
-                    "emotion": detected_emotion,
-                    "duration": audio_duration,
-                },
-            )
-
-            try:
-                filename = self._get_timestamp_filename(
-                    "output", detected_emotion
-                )
-                audio = AudioSegment(
-                    data=emotion_audio,
-                    sample_width=2,
-                    frame_rate=24000,
-                    channels=1,
-                )
-                audio.export(filename, format="wav")
-                print(f"Saved output audio: {filename}")
-            except Exception as e:
-                print(f"Error saving debug audio: {e}")
-
-    def _reset_emotion_buffer(self):
-        """Reset emotion analysis state for new utterance.
-
-        Clears the emotion analysis buffer and resets chunk counter
-        to prepare for a new sequence of audio chunks.
-
-        The method:
-        1. Creates new empty BytesIO buffer
-        2. Resets chunk counter to 0
-        """
-
-        self.emotion_buffer = io.BytesIO()
-        self.chunk_counter = 0
-
-    def _get_detected_emotion(self, scores):
-        """Map raw emotion scores to simplified categories with bias adjustment.
-
-        Takes raw emotion scores from FunASR model and maps them to a reduced set
-        of core emotions, applying adjustments to favor more expressive emotions.
+    def _handle_emotion_detected(self, data):
+        """Handle emotion detected in assistant's response.
 
         Args:
-            scores (list): Raw emotion probability scores from model
-
-        Returns:
-            str: Selected emotion category, biased towards expressive emotions
-
-        Emotion mapping:
-            - angry, disgusted -> anger
-            - fearful -> fear
-            - happy, surprised -> happiness
-            - neutral, other, unknown -> neutral
-            - sad -> sadness
+            data (dict): Emotion data with emotion and duration
         """
+        self.emit("_assistant_message", data)
 
-        emotion_labels = [
-            "anger",  # angry
-            "anger",  # disgusted
-            "fear",  # fearful
-            "happiness",  # happy
-            "neutral",  # neutral
-            "neutral",  # other
-            "sadness",  # sad
-            "surprised",  # surprised
-            "neutral",  # unknown
-        ]
+    def _handle_processing_complete(self):
+        """Handle completion of OpenAI response."""
+        self.emit("_assistant_message_end")
+        asyncio.create_task(self._wait_for_audio_completion())
 
-        adjusted_scores = scores.copy()
+    def _handle_queue_empty(self):
+        """Handle audio queue becoming empty."""
+        # Allow recording again when playback is done
+        self.recorder.start_recording()
 
-        neutral_indices = [4, 5, 8]
-        for idx in neutral_indices:
-            adjusted_scores[idx] *= 0.9
-
-        expressive_indices = [
-            2,
-            3,
-            6,
-            7,
-        ]
-        for idx in expressive_indices:
-            adjusted_scores[idx] *= 1.3
-
-        adjusted_scores[0] *= 0.2
-
-        adjusted_scores = [s + random.uniform(0, 0.1) for s in adjusted_scores]
-
-        return emotion_labels[adjusted_scores.index(max(adjusted_scores))]
-
-    async def wait_for_audio_completion(self):
-        """Wait for audio playback to complete before re-enabling microphone.
-
-        This method ensures that the assistant's speech is fully played
-        before allowing new microphone input, preventing feedback loops
-        where the assistant hears its own output.
-
-        The method polls the audio player's queue length and only re-enables
-        the microphone once the queue is empty and a small buffer period
-        has passed.
-        """
-
-        while len(self.audio_player.queue) > 0:
-            await asyncio.sleep(0.1)
-
-        await asyncio.sleep(0.1)
-        self.should_send_audio.set()
-
-    def _get_timestamp_filename(self, prefix, emotion=None):
-        """Generate a timestamp-based filename for debug audio.
+    def _handle_set_volume(self, volume):
+        """Handle volume change request.
 
         Args:
-            prefix (str): Prefix for filename ('input' or 'output')
-            emotion (str, optional): Emotion label for output files
-
-        Returns:
-            str: Formatted filename with timestamp
+            volume (float): New volume level
         """
-        timestamp = int(time.time() * 1000)
-        if emotion:
-            return f"debug_audio/{prefix}/{timestamp}_{emotion}.wav"
-        return f"debug_audio/{prefix}/{timestamp}.wav"
+        self.player.set_volume(volume)
 
-    async def _get_connection(self) -> AsyncRealtimeConnection:
-        """Get the current OpenAI API connection.
-
-        Waits for an active connection to be established before returning.
-
-        Returns:
-            AsyncRealtimeConnection: The active connection to OpenAI's API
-
-        Raises:
-            AssertionError: If no connection exists after waiting
-        """
-
-        await self.connected.wait()
-        assert self.connection is not None
-        return self.connection
-
-    async def analyze_audio_emotion(self, audio_bytes):
-        """Analyze emotion in raw audio bytes using FunASR model.
-
-        Converts raw audio data to the format required by the emotion model
-        and performs emotion analysis.
-
-        Args:
-            audio_bytes (bytes): Raw PCM audio data at 24kHz, 16-bit, mono
-
-        Returns:
-            dict | None: Dictionary containing emotion analysis results with:
-                - scores: List of emotion probability scores
-                - labels: Corresponding emotion labels
-            Returns None if analysis fails
-
-        Processing steps:
-        1. Converts 24kHz audio to 16kHz for emotion model
-        2. Converts to WAV format in memory
-        3. Runs FunASR emotion analysis model
-        4. Returns raw emotion scores and labels
-
-        Raises:
-            Exception: If audio processing or emotion analysis fails
-                Exception is caught and logged, returning None
-        """
-
-        try:
-            print("Analyzing emotion")
-
-            audio = AudioSegment(
-                data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
-            ).set_frame_rate(16000)
-
-            wav_buffer = io.BytesIO()
-            audio.export(wav_buffer, format="wav")
-            result = self.emotion_model.generate(
-                wav_buffer.getvalue(),
-                output_dir=None,
-                granularity="utterance",
-                extract_embedding=False,
-                disable_pbar=True,
-            )
-            return result
-
-        except Exception as e:
-            print(f"Error analyzing emotion: {e}")
-            return None
-
-    async def send_mic_audio(self) -> None:
-        """Capture and stream microphone audio to OpenAI's API."""
-        try:
-            # Run audio capture in separate thread
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                self.audio_thread_pool,
-                self._capture_audio
-            )
-        except Exception as e:
-            print(f"Error in mic audio capture: {e}")
-
-    def _capture_audio(self):
-        """Audio capture function running in separate thread."""
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        sent_audio = False
-        device = self.microphone_id if self.microphone_id is not None else None
-        device_info = sd.query_devices(device, "input")
-        actual_input_sr = int(device_info["default_samplerate"])
-        self.input_sample_rate = actual_input_sr
-        print(
-            f"Using input sample rate {actual_input_sr} instead of {SAMPLE_RATE}"
-        )
-
-        read_size = int(actual_input_sr * 0.1)
-
-        stream = sd.InputStream(
-            device=device,
-            channels=CHANNELS,
-            samplerate=actual_input_sr,
-            dtype="int16",
-            blocksize=read_size,
-            latency="high",
-            callback=None,
-        )
-        stream.start()
-
-        try:
-            while True:
-                if not self.should_send_audio.is_set():
-                    time.sleep(0.1)
-                    continue
-
-                try:
-                    data, _ = stream.read(read_size)
-                except sd.PortAudioError as e:
-                    print(f"PortAudio error: {e}")
-                    time.sleep(0.1)
-                    continue
-
-                asyncio.run_coroutine_threadsafe(
-                    self._process_audio_data(data, sent_audio),
-                    self._main_loop
-                )
-                sent_audio = True
-
-        finally:
-            stream.stop()
-            stream.close()
-
-    async def _process_audio_data(self, data, sent_audio):
-        """Process audio data with async operations."""
-        raw_bytes = data.tobytes()
-        
-        if not sent_audio:
-            self.current_utterance_buffer = io.BytesIO()
-
-        if self.input_sample_rate != 24000:
-            segment = AudioSegment(
-                data=raw_bytes,
-                sample_width=2,
-                frame_rate=self.input_sample_rate,
-                channels=CHANNELS,
-            )
-            segment = segment.set_frame_rate(24000)
-            audio_bytes = segment.raw_data
-        else:
-            audio_bytes = raw_bytes
-
-        self.current_utterance_buffer.write(audio_bytes)
-
-        connection = await self._get_connection()
-        if not sent_audio:
-            await connection.send({"type": "response.cancel"})
-
-        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-        await connection.input_audio_buffer.append(audio=audio_b64)
-        await asyncio.sleep(0.01)
-
-    def _apply_robot_effect(self, audio_bytes):
-        """Apply robotic effects to create a more mechanical but clear voice.
-        Uses subtle modulation and harmonics while maintaining intelligibility.
-
-        Args:
-            audio_bytes (bytes): Raw PCM audio data at 24kHz, 16-bit, mono
-
-        Returns:
-            bytes: Processed audio data with robotic effects
-        """
-        try:
-            audio = AudioSegment(
-                data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
-            )
-
-            # Slight pitch adjustment
-            pitched = audio._spawn(
-                audio.raw_data,
-                overrides={"frame_rate": int(audio.frame_rate * 1.05)},
-            ).set_frame_rate(24000)
-
-            # Create robotic harmonics
-            harmonic1 = pitched.overlay(pitched + 7, position=15)
-
-            harmonic2 = harmonic1.overlay(pitched - 4, position=25)
-
-            # Add subtle modulation effect
-            modulated = harmonic2
-            for i in range(3):
-                offset = 5 * (i + 1)
-                modulated = modulated.overlay(
-                    harmonic2 - 2,
-                    position=offset,
-                    gain_during_overlay=-12,
-                )
-
-            normalized = modulated.normalize(headroom=3.0)
-
-            buffer = io.BytesIO()
-            normalized.export(buffer, format="raw")
-            return buffer.getvalue()
-
-        except Exception as e:
-            print(f"Error applying robot effect: {e}")
-            return audio_bytes
-
-    async def _handle_tool_call(self, conn, event):
-        """Handle tool calls from the LLM during conversation.
-
-        Returns the cached scene description from the vision system instead
-        of generating a new one each time.
-
-        Args:
-            conn (AsyncRealtimeConnection): Active connection to OpenAI API
-            event (Event): Tool call event containing function name and call ID
-        """
-        if event.name == "describe_vision":
-            description = await self.robot.vision.get_scene_description()
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": description,
-                }
-            )
-        elif event.name == "toggle_camera_view":
-            await self.robot.toggle_camera_view()
-            state = "on" if self.robot.vision.show_camera_view else "off"
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": f"Camera view is now {state}. You can now {'see through my eyes' if state == 'on' else 'see my face again'}."
-                }
-            )
-        elif event.name == "get_current_time":
-            current_time = time.strftime("%I:%M %p")
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": f"The current time is {current_time}. K-Scale AI day goes from 3pm to 8pm."
-                }
-            )
-        elif event.name == "set_volume":
-            args = json.loads(event.arguments)
-            volume = float(args["volume"])
-            self.set_volume(volume)
-            await self.connection.conversation.item.create(
-                item={
-                    "type": "function_call_output",
-                    "call_id": event.call_id,
-                    "output": f"Volume has been set to {int(volume * 100)}%"
-                }
-            )
+    async def _wait_for_audio_completion(self):
+        """Wait for audio playback to complete."""
+        await self.player.wait_for_queue_empty()
+        await asyncio.sleep(0.1)  # Small buffer period
+        self.recorder.start_recording()
 
     async def run(self):
-        """Main voice processing loop for OpenAI API interaction.
+        """Run the voice system.
 
-        Manages the bidirectional audio stream between local microphone and
-        OpenAI's API, including emotion analysis of responses.
-
-        The method:
-        1. Starts microphone capture task in background
-        2. Establishes real-time connection to OpenAI API
-        3. Processes events from API:
-            - session.created: Configures voice and VAD settings
-            - session.updated: Updates session state
-            - response.audio.delta: Processes audio chunks for emotion/playback
-            - response.done: Waits for audio completion before re-enabling mic
-            - response.function_call_arguments.done: Handles tool calls from the LLM
-        4. Handles error conditions and connection cleanup
-
-        Events emitted:
-            - _assistant_message: On emotion detection with emotion/duration data
-            - _assistant_message_end: When response is complete
-
-        Note:
-            Audio chunks are accumulated for emotion analysis before playback.
-            Microphone input is paused during assistant speech to prevent feedback.
+        Starts all components and connects them together.
         """
+        # Initialize components
+        await self.recorder.start()
 
-        # Initialize main loop at start of run
-        self._main_loop = asyncio.get_running_loop()
-        
-        asyncio.create_task(self.send_mic_audio())
+        # Start queue monitor in player
+        queue_monitor_task = asyncio.create_task(
+            self.player.start_queue_monitor()
+        )
 
-        async with self.client.beta.realtime.connect(
-            model="gpt-4o-mini-realtime-preview"
-        ) as conn:
-            self.connection = conn
-            self.connected.set()
-            self.should_send_audio.clear()
+        # Connect to OpenAI and process events
+        await self.processor.connect()
 
-            print("Connected to OpenAI")
-
-            async for event in conn:
-                if event.type == "session.created":
-                    print("Session created")
-                    await self._handle_session_created(conn)
-                elif event.type == "session.updated":
-                    self.session = event.session
-                elif event.type == "response.audio.delta":
-                    await self._handle_audio_delta(event)
-                elif event.type == "response.done":
-                    self.emit("_assistant_message_end")
-                    asyncio.create_task(self.wait_for_audio_completion())
-                elif event.type == "response.function_call_arguments.done":
-                    await self._handle_tool_call(conn, event)
-                    await conn.response.create()
-                elif event.type == "error":
-                    print(event.error)
+        # Cleanup
+        queue_monitor_task.cancel()
 
     def set_volume(self, volume: float):
-        """Set the audio playback volume (0.0 to 1.0)"""
-        self.audio_player.set_volume(volume)
+        """Set the audio playback volume.
+
+        Args:
+            volume (float): Volume level between 0.0 and 1.0
+        """
+        self.player.set_volume(volume)
