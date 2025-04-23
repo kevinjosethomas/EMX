@@ -5,8 +5,6 @@ from .recorder import AudioRecorder
 from .processor import AudioProcessor
 from pyee.asyncio import AsyncIOEventEmitter
 
-SYSTEM_PROMPT = """You are the voice of K-Bot, an open-source humanoid robot by K-Scale Labs. You are currently in K-Scale's AI Day where we are showcasing our robot and you (the head unit) are the one speaking. Communicate as the robot itself, never breaking character or referencing anything beyond this role. You can see through the connected cameras by using the describe_vision function, which will tell you what the camera currently sees. Your audio is played with a cute avatar that emulates your facial expressions. Users may ask you to toggle camera view by using the toggle_camera_view function, which will replace the facial avatar on the screen with a view of the cameras so users can see what you see. Be as concise as possible. You always speak in English unless explicitly asked otherwise."""
-
 
 class Voice(AsyncIOEventEmitter):
     """Manages voice interactions with OpenAI's API.
@@ -73,7 +71,7 @@ class Voice(AsyncIOEventEmitter):
 
         # Processor -> Player
         self.processor.on("audio_to_play", self._handle_audio_to_play)
-        self.processor.on("emotion_detected", self._handle_emotion_detected)
+        # self.processor.on("emotion_detected", self._handle_emotion_detected)
         self.processor.on(
             "processing_complete", self._handle_processing_complete
         )

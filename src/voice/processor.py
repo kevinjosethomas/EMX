@@ -4,14 +4,14 @@ import time
 import base64
 import random
 import asyncio
-from funasr import AutoModel
+# from funasr import AutoModel
 from pydub import AudioSegment
 from openai import AsyncOpenAI
 from .tools import ToolManager
 from pyee.asyncio import AsyncIOEventEmitter
 
 # OpenAI system prompt
-SYSTEM_PROMPT = """You are the voice of K-Bot, an open-source humanoid robot by K-Scale Labs. You are currently in K-Scale's AI Day where we are showcasing our robot and you (the head unit) are the one speaking. Communicate as the robot itself, never breaking character or referencing anything beyond this role. You can see through the connected cameras by using the describe_vision function, which will tell you what the camera currently sees. Your audio is played with a cute avatar that emulates your facial expressions. Users may ask you to toggle camera view by using the toggle_camera_view function, which will replace the facial avatar on the screen with a view of the cameras so users can see what you see. Be as concise as possible. You always speak in English unless explicitly asked otherwise."""
+SYSTEM_PROMPT = """You are the voice of Z-Bot, an open-source humanoid robot by K-Scale Labs. Communicate as the robot itself, never breaking character or referencing anything beyond this role. Be as concise as possible. You always speak in English unless explicitly asked otherwise."""
 
 
 class AudioProcessor(AsyncIOEventEmitter):
@@ -69,16 +69,16 @@ class AudioProcessor(AsyncIOEventEmitter):
         self.chunk_counter = 0
         self.last_audio_item_id = None
 
-        model_path = "iic/emotion2vec_plus_base"
-        self.emotion_model = AutoModel(
-            model=model_path,
-            model_revision="v1.0",
-            device="cpu",
-            offline=True,
-            use_cache=True,
-            disable_update=True,
-            hub="hf",
-        )
+        # model_path = "iic/emotion2vec_plus_base"
+        # self.emotion_model = AutoModel(
+        #     model=model_path,
+        #     model_revision="v1.0",
+        #     device="cpu",
+        #     offline=True,
+        #     use_cache=True,
+        #     disable_update=True,
+        #     hub="hf",
+        # )
 
         if debug:
             os.makedirs("debug_audio", exist_ok=True)
@@ -194,35 +194,35 @@ class AudioProcessor(AsyncIOEventEmitter):
         emotion_audio = self.emotion_buffer.getvalue()
         audio_duration = len(emotion_audio) / (24000 * 2)
 
-        emotion_result = await self.analyze_audio_emotion(emotion_audio)
-        if emotion_result:
-            detected_emotion = self._get_detected_emotion(
-                emotion_result[0]["scores"]
-            )
+        # emotion_result = await self.analyze_audio_emotion(emotion_audio)
+        # if emotion_result:
+        #     detected_emotion = self._get_detected_emotion(
+        #         emotion_result[0]["scores"]
+        #     )
 
-            self.emit(
-                "emotion_detected",
-                {
-                    "emotion": detected_emotion,
-                    "duration": audio_duration,
-                },
-            )
+        #     self.emit(
+        #         "emotion_detected",
+        #         {
+        #             "emotion": detected_emotion,
+        #             "duration": audio_duration,
+        #         },
+        #     )
 
-            if self.debug:
-                try:
-                    filename = self._get_timestamp_filename(
-                        "output", detected_emotion
-                    )
-                    audio = AudioSegment(
-                        data=emotion_audio,
-                        sample_width=2,
-                        frame_rate=24000,
-                        channels=1,
-                    )
-                    audio.export(filename, format="wav")
-                    print(f"Saved output audio: {filename}")
-                except Exception as e:
-                    print(f"Error saving debug audio: {e}")
+        if self.debug:
+            try:
+                filename = self._get_timestamp_filename(
+                    "output"
+                )
+                audio = AudioSegment(
+                    data=emotion_audio,
+                    sample_width=2,
+                    frame_rate=24000,
+                    channels=1,
+                )
+                audio.export(filename, format="wav")
+                print(f"Saved output audio: {filename}")
+            except Exception as e:
+                print(f"Error saving debug audio: {e}")
 
     def _reset_emotion_buffer(self):
         """Reset emotion analysis buffer."""

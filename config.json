@@ -1,7 +1,7 @@
 {
-    "microphone_id": 4,
+    "microphone_id": 2,
     "camera_id": 2,
-    "speaker_id": 5,
+    "speaker_id": 3,
     "volume": 0.3,
     "face_detection_confidence": 0.8,
     "face_tracking_threshold": 0.8,
